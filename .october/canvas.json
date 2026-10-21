@@ -1,0 +1,224 @@
+{
+  "screens": [
+    {
+      "id": "screen-mvhqlkf6-j",
+      "title": "Home",
+      "kind": "desktop",
+      "routePath": "/",
+      "filePath": "app/page.tsx",
+      "position": {
+        "x": 744.6817883708981,
+        "y": -60.881378384437326
+      },
+      "size": {
+        "width": 640,
+        "height": 430
+      },
+      "screenVersion": 1,
+      "agentLayout": null
+    }
+  ],
+  "chatBoxes": [
+    {
+      "ownerUserId": "40b55fdb-617a-4d85-8eae-48a079da6914",
+      "ownerDeviceId": "2a02b8c3-29b3-4315-890a-6fe9e691e927",
+      "ownerName": "kaushik0h0s",
+      "id": "chat-mvhqlkf6-k",
+      "title": "Chat",
+      "harness": "opencode",
+      "position": {
+        "x": -16.46016817457135,
+        "y": -29.318680639920267
+      },
+      "size": {
+        "width": 380,
+        "height": 420
+      },
+      "messages": [],
+      "activeScreenId": "screen-mvhqlkf6-j",
+      "agentName": "Apollo",
+      "agentLayout": null
+    },
+    {
+      "ownerUserId": "40b55fdb-617a-4d85-8eae-48a079da6914",
+      "ownerDeviceId": "2a02b8c3-29b3-4315-890a-6fe9e691e927",
+      "ownerName": "kaushik0h0s",
+      "id": "chat-mvhson1i-3",
+      "title": "Chat",
+      "workspaceId": "5d710750-b2ca-43ff-a219-b527a60e60dd",
+      "cwd": "/home/kaushi/Projects/DEVHOST",
+      "position": {
+        "x": 342.75805783241503,
+        "y": 768.9006701101816
+      },
+      "size": {
+        "width": 1100,
+        "height": 860
+      },
+      "messages": [],
+      "harness": "codex",
+      "permission": "auto",
+      "paidBy": "own-account",
+      "agentName": "Orion",
+      "createdAt": 1792567966374,
+      "agentLayout": null,
+      "activeScreenId": "screen-mvhqlkf6-j"
+    }
+  ],
+  "stickies": [],
+  "analytics": [],
+  "experiments": [],
+  "terminals": [
+    {
+      "ownerUserId": "40b55fdb-617a-4d85-8eae-48a079da6914",
+      "ownerDeviceId": "2a02b8c3-29b3-4315-890a-6fe9e691e927",
+      "ownerName": "kaushik0h0s",
+      "id": "term-mvhqmpsd-m",
+      "title": "Terminal",
+      "workspaceId": "5d710750-b2ca-43ff-a219-b527a60e60dd",
+      "agentName": "Atlas",
+      "position": {
+        "x": -974.6002116137415,
+        "y": 768.9006701101816
+      },
+      "size": {
+        "width": 1100,
+        "height": 860
+      },
+      "cwd": "/home/kaushi/Projects/DEVHOST",
+      "launchPending": false,
+      "permissionMode": "bypassPermissions",
+      "startCommand": "agy",
+      "harness": "antigravity",
+      "createdAt": 1792564517399,
+      "agentLayout": {
+        "group": "agents:2a02b8c3-29b3-4315-890a-6fe9e691e927:40b55fdb-617a-4d85-8eae-48a079da6914",
+        "order": 0
+      },
+      "workspaceLocked": true,
+      "runEvidence": {
+        "ownerDeviceId": "2a02b8c3-29b3-4315-890a-6fe9e691e927",
+        "runId": "95a1f8f7-e165-48be-b6dc-4c20eb93670a",
+        "outcome": "running",
+        "observedAt": 1792567863503
+      },
+      "taskPrompt": "There are two agents running, one is Atlas and Urban. Urban is a bit more expensive and premium model and Atlas is more like a really good model but a bit lower than the Urban. So, you have to do the work, so what to do is basically, right now what happening is, everything is in simulated data running in this application. I don't want the simulation thing. I really want to connect it to the real mcp. Change the thing. So, don't change the thing, just explain me how can I migrate it to the real data."
+    }
+  ],
+  "closedTerminals": [
+    {
+      "id": "term-mvhtz44m-b",
+      "agentName": "Juno",
+      "harness": "codex",
+      "title": "Terminal",
+      "cwd": "/home/kaushi/Projects/DEVHOST",
+      "workspaceId": "5d710750-b2ca-43ff-a219-b527a60e60dd",
+      "position": {
+        "x": -1440.4601681745714,
+        "y": -175.09932988981836
+      },
+      "size": {
+        "width": 1400,
+        "height": 920
+      },
+      "session": {
+        "agent": "codex"
+      },
+      "permissionMode": "default",
+      "closedAt": 1792570186919
+    },
+    {
+      "id": "term-mvhsob4r-2",
+      "agentName": "Orion",
+      "harness": "claude-code",
+      "title": "Terminal",
+      "cwd": "/home/kaushi/Projects/DEVHOST",
+      "workspaceId": "5d710750-b2ca-43ff-a219-b527a60e60dd",
+      "position": {
+        "x": 711.3997883862585,
+        "y": 768.9006701101816
+      },
+      "size": {
+        "width": 1100,
+        "height": 860
+      },
+      "session": {
+        "agent": "claude"
+      },
+      "permissionMode": "default",
+      "closedAt": 1792567957895
+    }
+  ],
+  "closedChats": [
+    {
+      "chat": {
+        "ownerUserId": "40b55fdb-617a-4d85-8eae-48a079da6914",
+        "ownerDeviceId": "2a02b8c3-29b3-4315-890a-6fe9e691e927",
+        "ownerName": "kaushik0h0s",
+        "id": "chat-mvhsrhl2-6",
+        "title": "Chat",
+        "workspaceId": "5d710750-b2ca-43ff-a219-b527a60e60dd",
+        "cwd": "/home/kaushi/Projects/DEVHOST",
+        "position": {
+          "x": -435.3114009914385,
+          "y": 1728.7677560083398
+        },
+        "size": {
+          "width": 1400,
+          "height": 920
+        },
+        "messages": [],
+        "harness": "antigravity",
+        "permission": "auto",
+        "paidBy": "own-account",
+        "agentName": "Juno",
+        "createdAt": 1792568099272,
+        "agentLayout": null
+      },
+      "closedAt": 1792568172055
+    }
+  ],
+  "connections": [
+    {
+      "id": "conn-mvhqlkf6-l",
+      "source": "chat-mvhqlkf6-k",
+      "target": "screen-mvhqlkf6-j"
+    },
+    {
+      "id": "conn-mvhsnd2u-0",
+      "source": "screen-mvhqlkf6-j",
+      "target": "term-mvhqmpsd-m",
+      "sourceHandle": "b",
+      "targetHandle": "t"
+    },
+    {
+      "id": "conn-mvhsq6t0-4",
+      "source": "term-mvhqmpsd-m",
+      "target": "chat-mvhson1i-3",
+      "sourceHandle": "r",
+      "targetHandle": "left"
+    },
+    {
+      "id": "conn-mvhsqbr4-5",
+      "source": "chat-mvhson1i-3",
+      "target": "screen-mvhqlkf6-j",
+      "sourceHandle": "top",
+      "targetHandle": "r"
+    }
+  ],
+  "busCanvasId": "0469356a-3f1d-419f-affb-626b02fa8b35",
+  "workspaces": [
+    {
+      "id": "5d710750-b2ca-43ff-a219-b527a60e60dd",
+      "name": "DEVHOST",
+      "color": "#6ea8fe"
+    }
+  ],
+  "workspaceBindings": {
+    "5d710750-b2ca-43ff-a219-b527a60e60dd": {
+      "root": "/home/kaushi/Projects/DEVHOST",
+      "allocation": "ready"
+    }
+  },
+  "primaryCheckoutId": "5d710750-b2ca-43ff-a219-b527a60e60dd"
+}

@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "sentinelgate": {
+      "command": "node",
+      "args": ["--import", "tsx/esm", "mcp-server/index.ts"],
+      "env": {
+        "SENTINEL_GATEWAY_URL": "http://localhost:3000/api/v1"
+      }
+    },
+    "mcp.cloudflare.com": {
+      "url": "http://127.0.0.1:8787/api/v1/mcp/mcp_140c18226e454e8dbd8d4aba913b030d",
+      "headers": {
+        "Authorization": "Bearer sg_mcp_nq4ELE-OhrR7_j1nW_akk3ljZiOWoJwJ"
+      }
+    }
+  }
+}

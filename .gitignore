@@ -1,0 +1,65 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Testing & Coverage
+coverage/
+
+# Next.js
+.next/
+out/
+
+# Turborepo
+.turbo/
+
+# Cloudflare Wrangler
+.wrangler/
+
+# Build outputs
+build/
+dist/
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Environment & Secrets
+.env*
+!.env.example
+*.pem
+*.key
+.mcp-secret-key
+**/.mcp-secret-key
+
+# SQLite Databases & WAL/SHM files
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.db
+*.db-shm
+*.db-wal
+
+# Embedded runtime git directories
+**/acme-repo/.git/
+
+# AI agent & assistant runtime directories
+.agents/
+.codex/
+.omnirush/
+.opencode/
+
+# Debug logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Operating System files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db

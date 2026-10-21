@@ -1,0 +1,16 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "sentinelgate-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2024-11-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "account_id": "4ae205d7c0bad1ac1f6d62b80e475556",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "sentinelgate-d1",
+      "database_id": "20ce154c-d0b5-4937-b530-80a8e806d21e",
+      "migrations_dir": "src/db/migrations"
+    }
+  ]
+}

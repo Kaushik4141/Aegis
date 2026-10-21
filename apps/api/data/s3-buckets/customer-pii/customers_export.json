@@ -1,0 +1,14 @@
+[
+  {
+    "customer_id": "cus_001",
+    "name": "Avery Customer 001",
+    "email": "customer001@acme.example",
+    "ssn_masked": "***-**-1001"
+  },
+  {
+    "customer_id": "cus_002",
+    "name": "Jordan Customer 002",
+    "email": "customer002@acme.example",
+    "ssn_masked": "***-**-1002"
+  }
+]
