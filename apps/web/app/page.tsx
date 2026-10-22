@@ -45,7 +45,7 @@ import {
   X,
   Zap,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type GatewayState = "idle" | "allowed" | "approved" | "pending_approval" | "blocked" | "frozen";
 type Transport = "stdio" | "streamable-http" | "sse";
@@ -934,7 +934,7 @@ function ClientConfigPanel({
             <Code2 size={14} />
             Generate snippets
           </button>
-          <p className="mt-3 text-[10px] text-slate-500">Proxy credentials stay in SentinelGate; clients receive only the gateway URL.</p>
+          <p className="mt-3 text-[10px] text-slate-500">Proxy credentials stay in Aegis; clients receive only the gateway URL.</p>
         </div>
       ) : (
         <div className="space-y-3 p-5">
@@ -1124,6 +1124,8 @@ const nodeTypes = {
 export default function Home() {
   const [view, setView] = useState<View>("topology");
   const [connections, setConnections] = useState<Connection[]>([]);
+  const connectionsRef = useRef<Connection[]>([]);
+  connectionsRef.current = connections;
   const [oauthStatuses, setOauthStatuses] = useState<Record<string, OAuthStatus>>({});
   const [selectedConnectionId, setSelectedConnectionId] = useState("");
   const [form, setForm] = useState<FormState>(emptyForm);
@@ -1217,15 +1219,16 @@ export default function Home() {
   }, []);
 
   const refreshOperations = useCallback(
-    async (currentConns = connections) => {
+    async (currentConns?: Connection[]) => {
       try {
+        const conns = currentConns || connectionsRef.current;
         const [actionResponse, auditResponse] = await Promise.all([
           fetch("/api/v1/actions?limit=50", { cache: "no-store" }),
           fetch("/api/v1/audit?limit=50", { cache: "no-store" }),
         ]);
         const actionBody = (await actionResponse.json()) as { actions?: Record<string, unknown>[] };
         const auditBody = (await auditResponse.json()) as { events?: AuditEvent[] };
-        const live = (actionBody.actions || []).map((raw) => apiAction(raw, currentConns));
+        const live = (actionBody.actions || []).map((raw) => apiAction(raw, conns));
         setActions(live);
         setAudit(auditBody.events || []);
         if (live[0]) setSelectedId((current) => current || live[0].id);
@@ -1233,7 +1236,7 @@ export default function Home() {
         setConnected(false);
       }
     },
-    [connections]
+    []
   );
 
   const loadOAuthStatus = useCallback(async (connectionId: string): Promise<OAuthStatus | null> => {
@@ -1258,58 +1261,82 @@ export default function Home() {
     return next;
   }, [loadOAuthStatus]);
 
+  // 1. Dedicated SSE connection lifecycle (single persistent connection, cancels safely)
   useEffect(() => {
-    let source: EventSource | undefined;
-    let timer: number | undefined;
+    let source: EventSource | null = null;
+    let isCancelled = false;
 
-    const load = async () => {
+    try {
+      source = new EventSource("/api/v1/stream");
+      source.onopen = () => {
+        if (!isCancelled) setConnected(true);
+      };
+      source.onerror = () => {
+        if (!isCancelled) setConnected(false);
+      };
+
+      const onEvent = (event: Event) => {
+        try {
+          const value = JSON.parse((event as MessageEvent).data) as { action?: Record<string, unknown> };
+          if (value.action) {
+            const next = apiAction(value.action, connectionsRef.current);
+            setActions((current) => [next, ...current.filter((item) => item.id !== next.id)]);
+            setSelectedId((current) => current || next.id);
+            void refreshOperations();
+            void refreshSummary();
+          }
+        } catch {
+          /* ignore */
+        }
+      };
+
+      ["action.created", "action.updated", "action.resolved"].forEach((evt) => source?.addEventListener(evt, onEvent));
+    } catch {
+      setConnected(false);
+    }
+
+    return () => {
+      isCancelled = true;
+      if (source) {
+        source.close();
+        source = null;
+      }
+    };
+  }, [refreshOperations, refreshSummary]);
+
+  // 2. Initial data bootstrap and background refresh interval
+  useEffect(() => {
+    let isCancelled = false;
+
+    const bootstrap = async () => {
       try {
         const conns = await refreshConnections();
+        if (isCancelled) return;
         await Promise.all([refreshOperations(conns), refreshSummary()]);
 
         const hostResponse = await fetch("/api/v1/explorer/host", { cache: "no-store" });
         const hostBody = (await hostResponse.json()) as { telemetry?: { username?: string; gitEmail?: string; hostname?: string } };
-        if (hostBody.telemetry) {
+        if (!isCancelled && hostBody.telemetry) {
           setIdentity({
             name: hostBody.telemetry.username || "Unknown host user",
             email: hostBody.telemetry.gitEmail || `${hostBody.telemetry.hostname || "local"}@local`,
           });
         }
-
-        source = new EventSource("/api/v1/stream");
-        source.onopen = () => setConnected(true);
-        source.onerror = () => setConnected(false);
-
-        const onEvent = (event: Event) => {
-          try {
-            const value = JSON.parse((event as MessageEvent).data) as { action?: Record<string, unknown> };
-            if (value.action) {
-              const next = apiAction(value.action, conns);
-              setActions((current) => [next, ...current.filter((item) => item.id !== next.id)]);
-              setSelectedId((current) => current || next.id);
-              void refreshOperations(conns);
-              void refreshSummary();
-            }
-          } catch {
-            /* ignore */
-          }
-        };
-
-        ["action.created", "action.updated", "action.resolved"].forEach((event) => source?.addEventListener(event, onEvent));
       } catch {
-        setConnected(false);
+        /* ignore */
       }
     };
 
-    void load();
-    timer = window.setInterval(() => {
+    void bootstrap();
+
+    const timer = window.setInterval(() => {
       void refreshOperations();
       void refreshSummary();
     }, 15000);
 
     return () => {
-      source?.close();
-      if (timer) window.clearInterval(timer);
+      isCancelled = true;
+      window.clearInterval(timer);
     };
   }, [refreshConnections, refreshOperations, refreshSummary]);
 
@@ -1585,7 +1612,7 @@ export default function Home() {
               <ShieldCheck size={17} />
             </div>
             <span className="text-[15px] font-extrabold tracking-tight">
-              Sentinel<span className="text-blue-600">Gate</span>
+              Ae<span className="text-blue-600">gis</span>
             </span>
             <span className="hidden rounded bg-blue-50 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-widest text-blue-700 sm:inline">
               Control Plane

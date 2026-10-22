@@ -12,7 +12,7 @@ export default function ErrorBoundary({
 }) {
   useEffect(() => {
     // Log client error safely
-    console.warn("SentinelGate control plane caught client event/error:", error);
+    console.warn("Aegis control plane caught client event/error:", error);
   }, [error]);
 
   const rawMessage = error?.message;

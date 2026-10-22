@@ -548,16 +548,22 @@ async function oauthHeaders(connectionId: string, item: { value: StoredConnectio
   const expiry = oauthTokenExpiry(tokens);
   if (tokens.refresh_token && expiry !== undefined && expiry <= Date.now() + 30_000) {
     const discovery = oauth.discovery || await discoverOAuth(item.value, fetchImpl);
-    const refreshed = await refreshAuthorization(discovery.authorizationServerUrl, {
-      metadata: discovery.metadata as any,
-      clientInformation: oauth.client as any,
-      refreshToken: tokens.refresh_token,
-      resource: discovery.resourceMetadata?.resource as string | undefined,
-      fetchFn: fetchImpl as never,
-    });
-    tokens = { ...(refreshed as unknown as OAuthTokens), receivedAt: new Date().toISOString() };
-    const registry = getMcpConnectionRegistry();
-    await registry.saveOAuth(connectionId, { ...oauth, discovery, tokens });
+    try {
+      const refreshed = await refreshAuthorization(discovery.authorizationServerUrl, {
+        metadata: discovery.metadata as any,
+        clientInformation: oauth.client as any,
+        refreshToken: tokens.refresh_token,
+        resource: discovery.resourceMetadata?.resource as string | undefined,
+        fetchFn: fetchImpl as never,
+      });
+      tokens = { ...(refreshed as unknown as OAuthTokens), receivedAt: new Date().toISOString() };
+      const registry = getMcpConnectionRegistry();
+      await registry.saveOAuth(connectionId, { ...oauth, discovery, tokens });
+    } catch (refreshErr) {
+      const registry = getMcpConnectionRegistry();
+      await registry.saveOAuth(connectionId, { ...oauth, tokens: undefined });
+      throw new Error(`OAuth session expired (${refreshErr instanceof Error ? refreshErr.message : "refresh failed"}). Please re-authenticate via the dashboard.`);
+    }
   }
   return { Authorization: `Bearer ${tokens.access_token}` };
 }
@@ -587,6 +593,10 @@ export async function getMcpClient(connectionId: string, runtimeEnv: SentinelEnv
     return existing.connecting || existing.client;
   }
   if (existing) await closeMcpClient(connectionId);
+  const hasManualAuth = Object.keys(item.secrets.headers || {}).length > 0 || Object.keys(item.secrets.secrets || {}).length > 0;
+  if (item.value.transport !== "stdio" && !hasManualAuth && !item.secrets.oauth?.tokens?.access_token) {
+    throw new Error("OAuth authorization required. Please authenticate this connection via the Aegis dashboard.");
+  }
   const client = new Client({ name: "sentinelgate-proxy", version: "0.1.0" });
   const transport = await transportFor(connectionId, item.value, item.secrets, runtimeEnv, fetchImpl);
   const active: ActiveConnection = { client, transport };

@@ -257,7 +257,7 @@ export function createSentinelGate(options: SentinelGatewayOptions = {}) {
 
   app.notFound((c) => c.json({ error: { code: "not_found", message: "SentinelGate route not found." }, requestId: c.get("requestId") }, 404));
 
-  app.get("/health", (c) => c.json({ ok: true, service: "sentinelgate", timestamp: nowIso(now) }));
+  app.get("/health", (c) => c.json({ ok: true, service: "aegis", timestamp: nowIso(now) }));
 
   const intercept = async (c: Context<GatewayEnv>) => {
     const body = await jsonBody(c);

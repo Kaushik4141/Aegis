@@ -15,6 +15,7 @@
     "lint": "turbo run lint",
     "mcp:server": "tsx mcp-server/index.ts",
     "agent": "tsx scripts/real-agent.ts",
+    "demo": "tsx scripts/demo-migration.ts",
     "db:generate": "turbo run db:generate --filter=api",
     "db:migrate": "turbo run db:migrate --filter=api",
     "db:migrate:remote": "turbo run db:migrate:remote --filter=api",

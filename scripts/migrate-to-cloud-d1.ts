@@ -2,7 +2,7 @@ import Database from "better-sqlite3";
 import path from "node:path";
 
 const MCP_URL = "http://127.0.0.1:8787/api/v1/mcp/mcp_140c18226e454e8dbd8d4aba913b030d";
-const MCP_TOKEN = "sg_mcp_nq4ELE-OhrR7_j1nW_akk3ljZiOWoJwJ";
+const MCP_TOKEN = "sg_mcp_Tftz45t2MtVI0Xp_2PtO1Mv7Z44M7Fuy";
 const ACCOUNT_ID = "4ae205d7c0bad1ac1f6d62b80e475556";
 const DATABASE_ID = "20ce154c-d0b5-4937-b530-80a8e806d21e";
 

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "SentinelGate — Agent Safety Control Plane",
+  title: "Aegis — Agent Safety Control Plane",
   description: "Edge-native action firewall for autonomous business agents.",
 };
 
