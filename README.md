@@ -267,6 +267,45 @@ ANTHROPIC_API_KEY=... AGENT_PROVIDER=anthropic npm run agent
 
 The prompt is `Ask Autonomous Enterprise Agent >`. The model only receives SentinelGate tools; it never gets direct database, S3, Git, or Datadog access.
 
+## Run any agent inside an Aegis sandbox
+
+MCP gating only covers traffic that flows through the gateway. The sandbox
+(`apps/sandbox`, port `8788`) closes that gap for everything else: it runs any
+agent command inside an instrumented Docker container and records every
+outbound connection, DNS lookup, spawned process, file write, and output line.
+A netwatch sidecar shares the container's network and PID namespaces, so even
+sub-second connections and hard-coded IP access are visible with the owning
+process name.
+
+```bash
+npm run dev:sandbox          # sandbox service on :8788 (builds the base image on first run)
+npm run sandbox -- run -- bash -lc 'psql postgres://... -c "DELETE FROM users"'
+npm run sandbox -- run --mode enforce -- node /workspace/scripts/real-agent.ts
+```
+
+Modes:
+
+- **observe** — record everything, alert on shadow access. Any DNS lookup or
+  outbound connection to a registered connection's host (or an extra
+  `SENTINEL_SHADOW_WATCHLIST=host1,host2` list) raises a
+  `sandbox.shadow_access` alert event plus an audit entry, in real time.
+- **enforce** — additionally installs iptables rules (IPv4 and IPv6) so agent
+  processes (uid 1000) can only reach the Aegis gateway and allow-listed
+  endpoints (LLM providers, package registries; extend with
+  `AEGIS_SANDBOX_ALLOW_DOMAINS`). Direct access to registered business
+  systems is refused at the network layer and logged — raw credentials become
+  unusable even if an agent holds them. `--default allow` flips the posture to
+  "block only registered hosts".
+
+Agents never run as root, never share the host filesystem, and get their
+workspace from a per-sandbox volume. On stop, a `docker diff` report of every
+file the agent touched is stored with the sandbox record.
+
+Gateway API: `POST/GET /api/v1/sandboxes`, `GET /api/v1/sandboxes/:id/events`,
+and `POST /api/v1/sandboxes/:id/events` (service-side ingest). The dashboard
+gains a **Sandboxes** view with live output, the full observed timeline, and
+shadow-access alerts.
+
 ## Optional production integrations
 
 Set these environment variables when deploying:

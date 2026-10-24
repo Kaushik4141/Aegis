@@ -3,6 +3,8 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import { makeId, writeAudit } from "./audit";
 import { createPolicyEvaluator, normalizePolicyDecision } from "./policy";
+import { getSandboxStore } from "./sandboxStore";
+import { detectShadowAccess, shadowWatchlist } from "./shadowDetect";
 import { createStore } from "./store";
 import { analyzeAction, executeAction } from "../enterprise/executor";
 import { enterpriseCounts, listBilling, listCustomers, queryEnterprise } from "../enterprise/data";
@@ -529,6 +531,81 @@ export function createSentinelGate(options: SentinelGatewayOptions = {}) {
   app.post("/mcp/connections/:id/oauth/start", oauthStart);
   app.get("/mcp/connections/:id/oauth/status", oauthStatus);
   app.get("/mcp/connections/:id/oauth/callback", oauthCallback);
+
+  // Agent sandbox registry: lifecycle records + observed events pushed by the
+  // sandbox service. Durable storage, shadow-access detection, and audit live
+  // here; container orchestration lives in the sandbox service.
+  const sandboxStore = getSandboxStore();
+  const announceSandbox = async (c: Context<GatewayEnv>) => {
+    const body = await jsonBody(c);
+    const id = stringField(body, "id", true) as string;
+    if (!/^sb_[a-zA-Z0-9_-]{1,60}$/.test(id)) throw new GatewayError(422, "invalid_body", "id must be a sandbox identifier (sb_...).");
+    const command = body.command;
+    if (!Array.isArray(command) || command.some((part) => typeof part !== "string")) throw new GatewayError(422, "invalid_body", "command must be an array of strings.");
+    const record = await sandboxStore.upsert({
+      id,
+      name: stringField(body, "name") || id,
+      command,
+      mode: body.mode === "enforce" ? "enforce" : "observe",
+      status: typeof body.status === "string" ? body.status : "running",
+      ...(typeof body.exitCode === "number" ? { exitCode: body.exitCode } : {}),
+      ...(body.report !== undefined ? { report: body.report } : {}),
+    });
+    return c.json({ sandbox: record, requestId: c.get("requestId") });
+  };
+  const ingestSandboxEvents = async (c: Context<GatewayEnv>) => {
+    const sandboxId = c.req.param("id");
+    if (!sandboxId) throw new GatewayError(404, "sandbox_not_found", "Sandbox not found.");
+    const body = await jsonBody(c);
+    const rawEvents = Array.isArray(body.events) ? body.events : [];
+    if (rawEvents.length > 500) throw new GatewayError(422, "invalid_body", "At most 500 events per batch.");
+    const hosts = await shadowWatchlist(mcpConnections, env);
+    const alerts: Array<{ id: string; type: string; detail: Record<string, unknown>; ts: string }> = [];
+    let stored = 0;
+    for (const value of rawEvents) {
+      if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+      const event = value as Record<string, unknown>;
+      const type = typeof event.type === "string" ? event.type : undefined;
+      if (!type) continue;
+      const detail = event.detail && typeof event.detail === "object" && !Array.isArray(event.detail) ? event.detail as Record<string, unknown> : {};
+      const ts = typeof event.ts === "string" ? event.ts : nowIso(now);
+      await sandboxStore.insertEvent(sandboxId, { type, detail, ts });
+      stored += 1;
+      if (type === "dns_lookup" || type === "net_connect") {
+        const match = await detectShadowAccess({ type, detail }, hosts);
+        if (match) {
+          const alertDetail = { kind: "sandbox.shadow_access", via: match.kind, host: match.host, ...match.detail };
+          const alert = await sandboxStore.insertEvent(sandboxId, { type: "alert", detail: alertDetail, ts });
+          alerts.push(alert);
+          await store.appendAudit({
+            id: makeId("audit"),
+            type: "sandbox.alert",
+            actionId: sandboxId,
+            timestamp: ts,
+            toStatus: "blocked",
+            actorId: typeof detail.process === "string" ? detail.process : "sandbox-agent",
+            reason: `Sandbox agent reached ${match.host} directly instead of through the gateway.`,
+            requestId: c.get("requestId"),
+            metadata: alertDetail,
+          });
+        }
+      }
+    }
+    return c.json({ ok: true, stored, alerts: alerts.length, requestId: c.get("requestId") });
+  };
+  app.post("/sandboxes", announceSandbox);
+  app.get("/sandboxes", async (c) => c.json({ sandboxes: await sandboxStore.list(limitFrom(c.req.query("limit"))), requestId: c.get("requestId") }));
+  app.get("/sandboxes/:id", async (c) => {
+    const sandbox = await sandboxStore.get(c.req.param("id"));
+    if (!sandbox) throw new GatewayError(404, "sandbox_not_found", "Sandbox not found.");
+    return c.json({ sandbox, requestId: c.get("requestId") });
+  });
+  app.get("/sandboxes/:id/events", async (c) => c.json({
+    events: await sandboxStore.listEvents(c.req.param("id"), { type: c.req.query("type"), limit: Math.min(2000, Number(c.req.query("limit")) || 500) }),
+    requestId: c.get("requestId"),
+  }));
+  app.post("/sandboxes/:id/events", ingestSandboxEvents);
+
 
   const mcpProxy = async (c: Context<GatewayEnv>) => {
     const connectionId = c.req.param("connectionId");

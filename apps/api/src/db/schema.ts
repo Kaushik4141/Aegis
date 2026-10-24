@@ -69,6 +69,31 @@ export const mcpConnections = sqliteTable("MCP_CONNECTIONS", {
   index("idx_mcp_connections_updated").on(table.updatedAt),
 ]);
 
+export const sandboxes = sqliteTable("SANDBOXES", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  commandJson: text("command_json").notNull(),
+  mode: text("mode").notNull().default("observe"),
+  status: text("status").notNull(),
+  exitCode: integer("exit_code"),
+  reportJson: text("report_json"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+}, (table) => [
+  index("idx_sandboxes_updated").on(table.updatedAt),
+]);
+
+export const sandboxEvents = sqliteTable("SANDBOX_EVENTS", {
+  id: text("id").primaryKey(),
+  sandboxId: text("sandbox_id").notNull(),
+  type: text("type").notNull(),
+  detailJson: text("detail_json").notNull(),
+  ts: text("ts").notNull(),
+}, (table) => [
+  index("idx_sandbox_events_sandbox").on(table.sandboxId, table.ts),
+  index("idx_sandbox_events_type").on(table.type),
+]);
+
 export type Customer = typeof customers.$inferSelect;
 export type InsertCustomer = typeof customers.$inferInsert;
 
@@ -83,3 +108,9 @@ export type InsertPendingAction = typeof pendingActions.$inferInsert;
 
 export type McpConnection = typeof mcpConnections.$inferSelect;
 export type InsertMcpConnection = typeof mcpConnections.$inferInsert;
+
+export type Sandbox = typeof sandboxes.$inferSelect;
+export type InsertSandbox = typeof sandboxes.$inferInsert;
+
+export type SandboxEventRow = typeof sandboxEvents.$inferSelect;
+export type InsertSandboxEvent = typeof sandboxEvents.$inferInsert;

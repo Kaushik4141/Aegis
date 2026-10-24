@@ -1,5 +1,18 @@
 {
   "$schema": "https://turbo.build/schema.json",
+  "globalEnv": [
+    "SENTINEL_SHADOW_WATCHLIST",
+    "SENTINEL_ADMIN_TOKEN",
+    "SENTINEL_HITL_TIMEOUT_MS",
+    "SENTINEL_STORE",
+    "SENTINEL_CORS_ORIGIN",
+    "SENTINEL_PUBLIC_URL",
+    "AEGIS_GATEWAY_URL",
+    "AEGIS_GATEWAY_INTERNAL_URL",
+    "AEGIS_SANDBOX_PORT",
+    "AEGIS_SANDBOX_DATA_DIR",
+    "AEGIS_SANDBOX_ALLOW_DOMAINS"
+  ],
   "tasks": {
     "dev": {
       "cache": false,

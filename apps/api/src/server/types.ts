@@ -53,7 +53,8 @@ export type AuditEventType =
   | "action.approved"
   | "action.blocked"
   | "action.frozen"
-  | "action.unfrozen";
+  | "action.unfrozen"
+  | "sandbox.alert";
 
 export interface AuditEvent {
   id: string;
@@ -105,6 +106,8 @@ export interface SentinelEnvironment {
   SENTINEL_OAUTH_STATE_TTL_MS?: string;
   /** Comma-separated allowlist of browser origins. Wildcard origins are ignored. */
   SENTINEL_CORS_ORIGIN?: string;
+  /** Extra hosts (beyond registered connections) treated as shadow-access targets. */
+  SENTINEL_SHADOW_WATCHLIST?: string;
 }
 
 export interface PolicyInput extends ActionRequest {
