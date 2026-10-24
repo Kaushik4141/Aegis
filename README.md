@@ -270,17 +270,26 @@ The prompt is `Ask Autonomous Enterprise Agent >`. The model only receives Senti
 ## Run any agent inside an Aegis sandbox
 
 MCP gating only covers traffic that flows through the gateway. The sandbox
-(`apps/sandbox`, port `8788`) closes that gap for everything else: it runs any
-agent command inside an instrumented Docker container and records every
-outbound connection, DNS lookup, spawned process, file write, and output line.
-A netwatch sidecar shares the container's network and PID namespaces, so even
-sub-second connections and hard-coded IP access are visible with the owning
-process name.
+(`apps/sandbox`, port `8788`) closes that gap for everything else — in two
+styles:
+
+**Interactive workspaces (the daily-driver experience).** Leave the command
+empty when creating a sandbox and you get a persistent, monitored workspace:
+open the dashboard's **Sandboxes** view, click into the terminal, and run your
+own agents exactly as you would on your laptop — `claude`, `codex`, and `tsx`
+are preinstalled. Work survives stop/restart (the workspace and your agent
+logins are kept); delete removes it for good. Every DNS lookup, outbound
+connection (with owning process), process, and file write lands on the
+timeline next to the terminal, and direct access to registered business
+systems raises shadow-access alerts in real time.
+
+**One-shot runs (scripted agents and demos).**
 
 ```bash
-npm run dev:sandbox          # sandbox service on :8788 (builds the base image on first run)
-npm run sandbox -- run -- bash -lc 'psql postgres://... -c "DELETE FROM users"'
-npm run sandbox -- run --mode enforce -- node /workspace/scripts/real-agent.ts
+npm run sandbox -- run --workspace ./scripts \
+  --env GEMINI_API_KEY=... \
+  --stdin "list unpaid invoices" \
+  -- tsx real-agent.ts
 ```
 
 Fire the repo's own terminal agent (a real LLM agent) inside a sandbox:

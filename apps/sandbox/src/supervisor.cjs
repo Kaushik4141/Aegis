@@ -125,12 +125,15 @@ function parsePs(stdout) {
     if (!line.trim()) continue;
     const match = line.trim().match(/^(\d+)\s+(\d+)\s+(\S+)\s+(\d+)\s+(.*)$/);
     if (!match) continue;
+    const args = match[5].slice(0, 300);
+    // The poller's own ps invocation would otherwise flood the timeline.
+    if (args.startsWith("ps -eo")) continue;
     map.set(Number(match[1]), {
       pid: Number(match[1]),
       ppid: Number(match[2]),
       user: match[3],
       etimes: Number(match[4]),
-      args: match[5].slice(0, 300),
+      args,
     });
   }
   return map;
@@ -178,10 +181,10 @@ function watchTree(root) {
 /* ----------------------------------- main ----------------------------------- */
 
 function main() {
-  if (!command.length) {
-    process.stderr.write("[aegis-supervisor] no command given\n");
-    process.exit(2);
-  }
+  // An empty command means "interactive workspace": hold the container open
+  // with a keepalive process; the user works via exec terminal sessions.
+  const isInteractive = command.length === 0;
+  const effectiveCommand = isInteractive ? ["sleep", "infinity"] : command;
   prepareEnvironment();
   const childEnv = { ...process.env };
   for (const key of Object.keys(childEnv)) {
@@ -191,8 +194,8 @@ function main() {
   childEnv.USER = "agent";
   childEnv.TERM = childEnv.TERM || "xterm";
 
-  log("start", `${command.join(" ")} (sandbox ${SANDBOX_ID})`);
-  emit("lifecycle", { kind: "started", command, mode: process.env.AEGIS_MODE || "observe" });
+  log("start", `${isInteractive ? "(interactive workspace)" : effectiveCommand.join(" ")} (sandbox ${SANDBOX_ID})`);
+  emit("lifecycle", { kind: "started", command: isInteractive ? [] : effectiveCommand, interactive: isInteractive, mode: process.env.AEGIS_MODE || "observe" });
 
   const pollTimer = setInterval(pollProcesses, POLL_MS);
   const flushTimer = setInterval(() => { flush().catch(() => undefined); }, FLUSH_MS);
@@ -201,7 +204,7 @@ function main() {
   watchTree("/home/agent");
 
   void waitForDns().then(() => {
-    const child = spawn(command[0], command.slice(1), {
+    const child = spawn(effectiveCommand[0], effectiveCommand.slice(1), {
       cwd: "/workspace",
       env: childEnv,
       uid: AGENT_UID,

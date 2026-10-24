@@ -28,6 +28,8 @@ export interface SandboxRecord {
   command: string[];
   mode: SandboxMode;
   status: SandboxStatus;
+  /** Interactive sandboxes run a keepalive and are driven via exec sessions; they persist across stop/restart. */
+  interactive: boolean;
   createdAt: string;
   updatedAt: string;
   exitCode?: number;
@@ -39,7 +41,8 @@ export interface SandboxRecord {
 
 export interface CreateSandboxInput {
   name: string;
-  command: string[];
+  /** Empty command creates an interactive workspace (keepalive + exec terminals). */
+  command?: string[];
   env?: Record<string, string>;
   mode?: SandboxMode;
   enforceDefault?: "allow" | "deny";

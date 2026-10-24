@@ -3,7 +3,7 @@ import dns from "node:dns/promises";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { cleanupSandbox, ensureImage, exitCode, hostGatewayIp, imageName, isRunning, runAgent, runNetwatch, stopSandbox } from "./docker";
+import { cleanupSandbox, ensureImage, exitCode, hostGatewayIp, imageName, isRunning, listAegisSandboxes, runAgent, runNetwatch, startSandbox, stopSandbox, stopSandboxKeep } from "./docker";
 import { GatewayClient } from "./gatewayClient";
 import type { CreateSandboxInput, SandboxEventInput, SandboxRecord } from "./types";
 
@@ -65,6 +65,39 @@ export class Orchestrator {
     return [...this.runtimes.values()].map((runtime) => runtime.record).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }
 
+  /**
+   * Adopt sandboxes whose containers survived a service restart. Docker
+   * container labels carry the identity; in-memory rings (logs, recent
+   * events) start empty while the gateway keeps the durable event history.
+   */
+  async adoptExisting(): Promise<number> {
+    let adopted = 0;
+    try {
+      for (const found of await listAegisSandboxes()) {
+        if (this.runtimes.has(found.id)) continue;
+        const now = new Date().toISOString();
+        const record: SandboxRecord = {
+          id: found.id,
+          name: found.name,
+          command: found.command,
+          mode: found.mode,
+          status: found.running ? "running" : "stopped",
+          interactive: found.interactive,
+          createdAt: now,
+          updatedAt: now,
+        };
+        const runtime: SandboxRuntime = { record, logs: [], events: [] };
+        this.runtimes.set(found.id, runtime);
+        if (found.running) runtime.pollTimer = setInterval(() => void this.watch(found.id), 5000);
+        await this.gateway.announceSandbox({ id: found.id, name: record.name, command: record.command, mode: record.mode, status: record.status });
+        adopted += 1;
+      }
+    } catch (error) {
+      console.warn("[sandbox] container adoption failed:", error instanceof Error ? error.message : String(error));
+    }
+    return adopted;
+  }
+
   get(id: string): SandboxRecord | null {
     return this.runtimes.get(id)?.record ?? null;
   }
@@ -105,11 +138,12 @@ export class Orchestrator {
   }
 
   async create(input: CreateSandboxInput): Promise<SandboxRecord> {
-    if (!Array.isArray(input.command) || input.command.length === 0 || input.command.some((part) => typeof part !== "string")) {
-      throw new Error("command must be a non-empty array of strings.");
-    }
+    const command = Array.isArray(input.command) ? input.command.filter((part) => typeof part === "string") : [];
     if (input.name && (typeof input.name !== "string" || input.name.length > 160)) throw new Error("name must be a string of at most 160 characters.");
     if (input.stdin !== undefined && (typeof input.stdin !== "string" || input.stdin.length > 8000)) throw new Error("stdin must be a string of at most 8000 characters.");
+    // An empty command creates an interactive workspace: a keepalive process
+    // plus exec terminals; the user works inside it like a normal machine.
+    const interactive = command.length === 0;
     await this.ensureImage();
 
     const id = `sb_${crypto.randomUUID().replace(/-/g, "").slice(0, 20)}`;
@@ -142,9 +176,10 @@ export class Orchestrator {
     const record: SandboxRecord = {
       id,
       name: input.name || `sandbox-${id.slice(3, 11)}`,
-      command: input.command,
+      command,
       mode,
       status: "running",
+      interactive,
       createdAt: now,
       updatedAt: now,
     };
@@ -155,14 +190,17 @@ export class Orchestrator {
       await runAgent({
         id,
         workspaceDir: workspace,
-        command: input.command,
+        command: interactive ? [] : command,
         env: input.env || {},
         supervisorPath: path.join(here, "supervisor.cjs"),
         eventUrl: this.eventUrl,
         upstreamDns: this.upstreamDns(),
         mode,
         gatewayUrl: this.gatewayUrlForAgents,
-        agentStdin: input.stdin,
+        ...(input.stdin !== undefined && !interactive ? { agentStdin: input.stdin } : {}),
+        nameLabel: input.name || `sandbox-${id.slice(3, 11)}`,
+        interactive,
+        commandLabel: command.join(" ").slice(0, 300),
       });
       const gatewayIp = await hostGatewayIp(`aegis-sb-${id}`);
       await runNetwatch({
@@ -195,8 +233,16 @@ export class Orchestrator {
     if (!runtime || runtime.record.status !== "running") return;
     const { agent } = imageName(id);
     if (await isRunning(agent)) return;
-    // Container exited without a lifecycle event reaching us (e.g. hard kill).
     clearInterval(runtime.pollTimer);
+    if (runtime.record.interactive) {
+      // Interactive workspaces keep their containers for restart; the report
+      // is only a snapshot, never a teardown.
+      runtime.record.status = "stopped";
+      runtime.record.updatedAt = new Date().toISOString();
+      await this.gateway.announceSandbox({ id, name: runtime.record.name, command: runtime.record.command, mode: runtime.record.mode, status: "stopped" });
+      return;
+    }
+    // One-shot run exited without a lifecycle event reaching us (hard kill).
     runtime.record.status = "exited";
     runtime.record.exitCode = await exitCode(agent);
     runtime.record.updatedAt = new Date().toISOString();
@@ -212,8 +258,40 @@ export class Orchestrator {
       runtime.record.exitCode = await exitCode(`aegis-sb-${id}`).catch(() => undefined);
     }
     runtime.record.updatedAt = new Date().toISOString();
-    await this.finalize(id, "stopped");
+    if (runtime.record.interactive) {
+      await stopSandboxKeep(id);
+      await this.gateway.announceSandbox({ id, name: runtime.record.name, command: runtime.record.command, mode: runtime.record.mode, status: "stopped" });
+    } else {
+      await this.finalize(id, "stopped");
+    }
     return cloneRecord(runtime.record);
+  }
+
+  async restart(id: string): Promise<SandboxRecord | null> {
+    const runtime = this.runtimes.get(id);
+    if (!runtime || !runtime.record.interactive) return null;
+    await startSandbox(id);
+    runtime.record.status = "running";
+    runtime.record.exitCode = undefined;
+    runtime.record.updatedAt = new Date().toISOString();
+    runtime.pollTimer = setInterval(() => void this.watch(id), 5000);
+    await this.gateway.announceSandbox({ id, name: runtime.record.name, command: runtime.record.command, mode: runtime.record.mode, status: "running" });
+    return cloneRecord(runtime.record);
+  }
+
+  async remove(id: string): Promise<boolean> {
+    const runtime = this.runtimes.get(id);
+    if (!runtime) return false;
+    if (runtime.pollTimer) clearInterval(runtime.pollTimer);
+    const filesystem = await stopSandbox(id);
+    const eventCounts: Record<string, number> = {};
+    for (const event of runtime.events) eventCounts[event.type] = (eventCounts[event.type] || 0) + 1;
+    runtime.record.status = "stopped";
+    runtime.record.report = { filesystem, eventCounts };
+    this.runtimes.delete(id);
+    await fs.promises.rm(path.join(this.sandboxDir, id), { recursive: true, force: true }).catch(() => undefined);
+    await this.gateway.announceSandbox({ id, name: runtime.record.name, command: runtime.record.command, mode: runtime.record.mode, status: "deleted", report: runtime.record.report });
+    return true;
   }
 
   private async finalize(id: string, status: "exited" | "stopped"): Promise<void> {

@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import path from "node:path";
+import Dockerode from "dockerode";
 
 export const IMAGE_TAG = "aegis-sandbox-base:latest";
 
@@ -61,12 +62,20 @@ export interface RunAgentOptions {
   mode: "observe" | "enforce";
   gatewayUrl: string;
   agentStdin?: string;
+  nameLabel: string;
+  interactive: boolean;
+  commandLabel: string;
 }
 
 export async function runAgent(options: RunAgentOptions): Promise<void> {
   const { agent } = imageName(options.id);
   const args = [
     "run", "-d", "--name", agent,
+    "--label", `aegis.sandbox=${options.id}`,
+    "--label", `aegis.name=${options.nameLabel}`,
+    "--label", `aegis.mode=${options.mode}`,
+    "--label", `aegis.interactive=${options.interactive ? "1" : "0"}`,
+    "--label", `aegis.command=${options.commandLabel}`,
     "--add-host=host.docker.internal:host-gateway",
     "-v", `${options.workspaceDir}:/workspace`,
     "-v", `${options.supervisorPath}:/aegis/supervisor.cjs:ro`,
@@ -108,6 +117,7 @@ export async function runNetwatch(options: RunNetwatchOptions): Promise<void> {
   // allowed here; the host-gateway IP is read from the agent container.
   const args = [
     "run", "-d", "--name", netwatch,
+    "--label", `aegis.sandbox=${options.id}`,
     "--network", `container:${agent}`,
     "--pid", `container:${agent}`,
     "--cap-add", "NET_ADMIN",
@@ -139,6 +149,39 @@ export async function hostGatewayIp(container: string): Promise<string> {
   }
 }
 
+export interface AdoptedSandbox {
+  id: string;
+  name: string;
+  mode: "observe" | "enforce";
+  interactive: boolean;
+  command: string[];
+  running: boolean;
+}
+
+/**
+ * Rebuild sandbox records from labeled containers after a service restart.
+ * Interactive workspaces outlive the service; without adoption their
+ * terminals and lifecycle controls would be orphaned.
+ */
+export async function listAegisSandboxes(): Promise<AdoptedSandbox[]> {
+  const output = await docker(["ps", "-a", "--filter", "label=aegis.sandbox", "--format", "{{.Names}}\t{{.State}}\t{{.Label \"aegis.name\"}}\t{{.Label \"aegis.mode\"}}\t{{.Label \"aegis.interactive\"}}\t{{.Label \"aegis.command\"}}"]);
+  const adopted: AdoptedSandbox[] = [];
+  for (const line of output.split("\n")) {
+    if (!line.trim()) continue;
+    const [containerName, state, name, mode, interactive, command] = line.split("\t");
+    if (!containerName?.startsWith("aegis-sb-") || containerName.endsWith("-net")) continue;
+    adopted.push({
+      id: containerName.replace(/^aegis-sb-/, ""),
+      name: name || containerName,
+      mode: mode === "enforce" ? "enforce" : "observe",
+      interactive: interactive === "1",
+      command: command ? command.split(" ").filter(Boolean) : [],
+      running: state === "running",
+    });
+  }
+  return adopted;
+}
+
 export interface SandboxDiffEntry {
   kind: "added" | "changed" | "deleted";
   path: string;
@@ -166,4 +209,74 @@ export async function cleanupSandbox(id: string): Promise<void> {
   const { agent, netwatch } = imageName(id);
   await docker(["rm", "-f", netwatch]).catch(() => undefined);
   await docker(["rm", "-f", agent]).catch(() => undefined);
+}
+
+/**
+ * Persistent lifecycle: stop keeps both containers (workspace, installed
+ * agents, and logins survive); restart brings the pair back in order — the
+ * netwatch sidecar shares the agent's network namespace, so the agent starts
+ * first. A stopped-then-started container re-runs its original command.
+ */
+export async function stopSandboxKeep(id: string): Promise<void> {
+  const { agent, netwatch } = imageName(id);
+  await docker(["stop", "-t", "12", netwatch]).catch(() => undefined);
+  await docker(["stop", "-t", "12", agent]).catch(() => undefined);
+}
+
+export async function startSandbox(id: string): Promise<void> {
+  const { agent, netwatch } = imageName(id);
+  await docker(["start", agent]);
+  await docker(["start", netwatch]).catch(async () => {
+    // A stale sidecar (e.g. removed behind our back) is recreated as-is.
+    await docker(["rm", "-f", netwatch]).catch(() => undefined);
+  });
+}
+
+/* ------------------------------ terminal exec ------------------------------ */
+
+const dockerApi = new Dockerode();
+
+export interface ExecSession {
+  write(input: string): void;
+  resize(cols: number, rows: number): Promise<void>;
+  kill(): Promise<void>;
+}
+
+/**
+ * Attach an interactive PTY shell (`bash`) inside the agent container. Used
+ * by the dashboard terminal: output is streamed raw (TTY exec has no
+ * multiplexing headers), input and resize are pushed by the caller.
+ */
+export async function execShell(
+  id: string,
+  handlers: { onOutput: (chunk: Buffer) => void; onExit: () => void },
+): Promise<ExecSession> {
+  const { agent } = imageName(id);
+  const container = dockerApi.getContainer(agent);
+  const execOptions: Dockerode.ExecCreateOptions = {
+    Cmd: ["bash"],
+    AttachStdin: true,
+    AttachStdout: true,
+    AttachStderr: true,
+    Tty: true,
+    WorkingDir: "/workspace",
+    User: "1000:1000",
+    Env: ["HOME=/home/agent", "TERM=xterm-256color"],
+  };
+  // dockerode creates the exec on container.exec(options); the bundled
+  // typings model the legacy callback form, so retype the call explicitly.
+  const execInstance = await (container.exec as unknown as (options: Dockerode.ExecCreateOptions) => Promise<Dockerode.Exec>)(execOptions);
+  const stream = await execInstance.start({ hijack: true, stdin: true, Tty: true });
+  stream.on("data", (chunk: Buffer) => handlers.onOutput(chunk));
+  stream.on("end", () => handlers.onExit());
+  stream.on("error", () => handlers.onExit());
+  return {
+    write: (input: string) => { stream.write(input); },
+    resize: async (cols: number, rows: number) => {
+      await execInstance.resize({ h: rows, w: cols }).catch(() => undefined);
+    },
+    kill: async () => {
+      stream.destroy?.();
+    },
+  };
 }

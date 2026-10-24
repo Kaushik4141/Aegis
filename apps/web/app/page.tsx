@@ -13,6 +13,7 @@ import {
   type NodeProps,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
+import "@xterm/xterm/css/xterm.css";
 import {
   Activity,
   AlertTriangle,
@@ -1128,6 +1129,7 @@ type SandboxRecordUi = {
   command: string[];
   mode: "observe" | "enforce" | string;
   status: string;
+  interactive?: boolean;
   exitCode?: number;
   report?: { filesystem?: Array<{ kind: string; path: string }>; eventCounts?: Record<string, number> };
   createdAt: string;
@@ -1149,6 +1151,79 @@ const sandboxEventTone = (type: string): "red" | "amber" | "green" | "slate" | "
 
 const splitCommand = (value: string): string[] =>
   (value.match(/"([^"]*)"|'([^']*)'|(\S+)/g) || []).map((part) => part.replace(/^["']|["']$/g, "")).filter(Boolean);
+
+const SANDBOX_WS_PORT = process.env.NEXT_PUBLIC_SANDBOX_WS_PORT || "8788";
+
+function SandboxTerminal({ sandboxId, onClosed }: { sandboxId: string; onClosed: () => void }) {
+  const hostRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    let disposed = false;
+    let socket: WebSocket | null = null;
+    let term: import("@xterm/xterm").Terminal | null = null;
+    let fit: import("@xterm/addon-fit").FitAddon | null = null;
+    const handleResize = () => {
+      try { fit?.fit(); } catch { /* panel may be unmounting */ }
+    };
+
+    void (async () => {
+      const [{ Terminal }, { FitAddon }] = await Promise.all([import("@xterm/xterm"), import("@xterm/addon-fit")]);
+      if (disposed || !hostRef.current) return;
+      term = new Terminal({ fontSize: 11.5, cursorBlink: true, fontFamily: "var(--font-mono, monospace)", theme: { background: "#0b1020" } });
+      fit = new FitAddon();
+      term.loadAddon(fit);
+      term.open(hostRef.current);
+      fit.fit();
+
+      const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+      socket = new WebSocket(`${protocol}://${window.location.hostname}:${SANDBOX_WS_PORT}/sandboxes/${encodeURIComponent(sandboxId)}/terminal`);
+      socket.binaryType = "arraybuffer";
+      socket.onopen = () => socket?.send(JSON.stringify({ t: "r", w: term?.cols || 100, h: term?.rows || 28 }));
+      socket.onmessage = (event) => {
+        if (typeof event.data !== "string") term?.write(new Uint8Array(event.data));
+      };
+      socket.onclose = () => { term?.write("\r\n\x1b[90m— session ended —\x1b[0m\r\n"); onClosed(); };
+      term.onData((data) => {
+        if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ t: "i", d: data }));
+      });
+      window.addEventListener("resize", handleResize);
+    })();
+
+    return () => {
+      disposed = true;
+      window.removeEventListener("resize", handleResize);
+      socket?.close();
+      term?.dispose();
+    };
+  }, [sandboxId, onClosed]);
+
+  return <div ref={hostRef} className="h-[430px] w-full overflow-hidden rounded-xl bg-[#0b1020] p-2" />;
+}
+
+function renderTimelineEvent(event: SandboxEventUi) {
+  return (
+    <div
+      key={event.id}
+      className={`mb-1.5 rounded-lg border px-3 py-2 ${
+        event.type === "alert" ? "border-red-200 bg-red-50" : "border-slate-100 bg-slate-50/60"
+      }`}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <StatusPill tone={sandboxEventTone(event.type)}>{event.type.replace("_", " ")}</StatusPill>
+        <span className="text-[9px] text-slate-400">{new Date(event.ts).toLocaleTimeString()}</span>
+      </div>
+      <p className="mt-1 truncate font-mono text-[9px] text-slate-600">
+        {event.type === "dns_lookup" && (event.detail.name as string)}
+        {event.type === "net_connect" && `${event.detail.peer}:${event.detail.peerPort} (${event.detail.process || "unknown"})`}
+        {event.type === "file_write" && `${event.detail.path}`}
+        {event.type === "alert" && `${event.detail.kind} → ${event.detail.host}`}
+        {event.type === "lifecycle" && `${event.detail.kind}${event.detail.code !== undefined ? ` (${event.detail.code})` : ""}`}
+        {event.type === "process" && `${event.detail.kind === "start" ? "▲" : "▽"} ${event.detail.args}`}
+        {event.type === "enforce_rule" && `${event.detail.kind} ${event.detail.ip}`}
+      </p>
+    </div>
+  );
+}
 
 function SandboxesView({ notify }: { notify: (message: string) => void }) {
   const [sandboxes, setSandboxes] = useState<SandboxRecordUi[]>([]);
@@ -1202,10 +1277,6 @@ function SandboxesView({ notify }: { notify: (message: string) => void }) {
 
   const createSandbox = async () => {
     const parts = splitCommand(command);
-    if (!parts.length) {
-      notify("Enter a command to run inside the sandbox");
-      return;
-    }
     setBusy(true);
     try {
       const response = await fetch("/sandbox-api/sandboxes", {
@@ -1213,11 +1284,12 @@ function SandboxesView({ notify }: { notify: (message: string) => void }) {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           name: name || undefined,
+          // An empty command creates an interactive workspace you shell into.
           command: parts,
           mode,
           env: parseMap(env),
           ...(workspace.trim() ? { workspace: workspace.trim() } : {}),
-          ...(stdinText.trim() ? { stdin: stdinText } : {}),
+          ...(stdinText.trim() && parts.length ? { stdin: stdinText } : {}),
         }),
       });
       if (!response.ok) throw new Error((await response.json()).message || `HTTP ${response.status}`);
@@ -1226,10 +1298,35 @@ function SandboxesView({ notify }: { notify: (message: string) => void }) {
       setName("");
       setCommand("");
       setEnv("");
-      notify(mode === "enforce" ? "Sandbox started (enforce)" : "Sandbox started (observe)");
+      notify(parts.length ? `Sandbox started (${mode})` : `Workspace ready (${mode}) — open a terminal`);
       await refresh();
     } catch (error) {
       notify(`Sandbox failed: ${error instanceof Error ? error.message : "unknown error"}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const restartSandbox = async () => {
+    if (!selected) return;
+    setBusy(true);
+    try {
+      await fetch(`/sandbox-api/sandboxes/${selected.id}/restart`, { method: "POST" });
+      notify("Workspace restarted");
+      await refresh();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const deleteSandbox = async () => {
+    if (!selected) return;
+    setBusy(true);
+    try {
+      await fetch(`/sandbox-api/sandboxes/${selected.id}`, { method: "DELETE" });
+      setSelectedId("");
+      notify("Workspace deleted");
+      await refresh();
     } finally {
       setBusy(false);
     }
@@ -1283,11 +1380,11 @@ function SandboxesView({ notify }: { notify: (message: string) => void }) {
                 />
               </label>
               <label className="block">
-                <span className="text-[9px] font-extrabold uppercase tracking-[.14em] text-slate-400">Command</span>
+                <span className="text-[9px] font-extrabold uppercase tracking-[.14em] text-slate-400">Command (leave empty for an interactive workspace)</span>
                 <input
                   value={command}
                   onChange={(event) => setCommand(event.target.value)}
-                  placeholder="tsx real-agent.ts"
+                  placeholder="claude   ·   codex   ·   tsx real-agent.ts"
                   className="field-input mt-1 font-mono"
                 />
               </label>
@@ -1355,9 +1452,10 @@ function SandboxesView({ notify }: { notify: (message: string) => void }) {
                 >
                   <div className="min-w-0">
                     <p className="truncate text-[11px] font-bold text-slate-800">{sandbox.name}</p>
-                    <p className="truncate font-mono text-[9px] text-slate-400">{sandbox.command.join(" ")}</p>
+                    <p className="truncate font-mono text-[9px] text-slate-400">{sandbox.command.length ? sandbox.command.join(" ") : "interactive workspace"}</p>
                   </div>
                   <div className="flex shrink-0 items-center gap-1.5">
+                    {sandbox.interactive && <StatusPill tone="blue">workspace</StatusPill>}
                     <StatusPill tone={sandbox.mode === "enforce" ? "blue" : "slate"}>{sandbox.mode}</StatusPill>
                     <StatusPill tone={sandbox.status === "running" ? "green" : "slate"} dot>
                       {sandbox.status}
@@ -1391,37 +1489,57 @@ function SandboxesView({ notify }: { notify: (message: string) => void }) {
                       Stop
                     </button>
                   )}
+                  {selected.interactive && selected.status !== "running" && (
+                    <button type="button" disabled={busy} onClick={() => void restartSandbox()} className="button-primary">
+                      <RefreshCw size={12} />
+                      Restart
+                    </button>
+                  )}
+                  {selected.interactive && (
+                    <button type="button" disabled={busy} onClick={() => void deleteSandbox()} className="button-danger">
+                      <Trash2 size={12} />
+                      Delete
+                    </button>
+                  )}
                 </div>
               ) : undefined
             }
           />
-          {selected ? (
+          {selected?.interactive && selected.status === "running" ? (
+            <div className="space-y-3 p-4">
+              <div className="flex items-center justify-between">
+                <p className="text-[9px] font-extrabold uppercase tracking-[.14em] text-slate-400">
+                  Terminal — run your agents here (claude, codex, tsx …)
+                </p>
+                <StatusPill tone="green" dot>live</StatusPill>
+              </div>
+              <SandboxTerminal
+                key={selected.id}
+                sandboxId={selected.id}
+                onClosed={() => void refresh()}
+              />
+              <div className="grid gap-0 lg:grid-cols-2">
+                <div className="max-h-[320px] overflow-y-auto rounded-xl border border-slate-100">
+                  <p className="px-4 pt-3 text-[9px] font-extrabold uppercase tracking-[.14em] text-slate-400">Observed activity</p>
+                  <div className="p-3">
+                    {events.map((event) => renderTimelineEvent(event))}
+                    {events.length === 0 && <p className="p-4 text-center text-[10px] text-slate-500">Events appear as you work in the terminal.</p>}
+                  </div>
+                </div>
+                <div className="max-h-[320px] overflow-y-auto rounded-xl border border-slate-100">
+                  <p className="px-4 pt-3 text-[9px] font-extrabold uppercase tracking-[.14em] text-slate-400">Background output</p>
+                  <pre className="whitespace-pre-wrap px-4 py-3 font-mono text-[9.5px] leading-5 text-slate-600">
+                    {logs.join("\n") || "One-shot commands (non-interactive runs) stream here."}
+                  </pre>
+                </div>
+              </div>
+            </div>
+          ) : selected ? (
             <div className="grid gap-0 lg:grid-cols-2">
               <div className="max-h-[560px] overflow-y-auto border-b border-slate-100 lg:border-b-0 lg:border-r">
                 <p className="px-5 pt-4 text-[9px] font-extrabold uppercase tracking-[.14em] text-slate-400">Observed activity</p>
                 <div className="p-3">
-                  {events.map((event) => (
-                    <div
-                      key={event.id}
-                      className={`mb-1.5 rounded-lg border px-3 py-2 ${
-                        event.type === "alert" ? "border-red-200 bg-red-50" : "border-slate-100 bg-slate-50/60"
-                      }`}
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <StatusPill tone={sandboxEventTone(event.type)}>{event.type.replace("_", " ")}</StatusPill>
-                        <span className="text-[9px] text-slate-400">{new Date(event.ts).toLocaleTimeString()}</span>
-                      </div>
-                      <p className="mt-1 truncate font-mono text-[9px] text-slate-600">
-                        {event.type === "dns_lookup" && (event.detail.name as string)}
-                        {event.type === "net_connect" && `${event.detail.peer}:${event.detail.peerPort} (${event.detail.process || "unknown"})`}
-                        {event.type === "file_write" && `${event.detail.path}`}
-                        {event.type === "alert" && `${event.detail.kind} → ${event.detail.host}`}
-                        {event.type === "lifecycle" && `${event.detail.kind}${event.detail.code !== undefined ? ` (${event.detail.code})` : ""}`}
-                        {event.type === "process" && `${event.detail.kind === "start" ? "▲" : "▽"} ${event.detail.args}`}
-                        {event.type === "enforce_rule" && `${event.detail.kind} ${event.detail.ip}`}
-                      </p>
-                    </div>
-                  ))}
+                  {events.map((event) => renderTimelineEvent(event))}
                   {events.length === 0 && <p className="p-5 text-center text-[10px] text-slate-500">Events appear as the agent works.</p>}
                 </div>
               </div>

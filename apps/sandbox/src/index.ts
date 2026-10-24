@@ -1,7 +1,8 @@
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import path from "node:path";
-import { dockerAvailable } from "./docker";
+import { WebSocketServer } from "ws";
+import { dockerAvailable, execShell } from "./docker";
 import { GatewayClient } from "./gatewayClient";
 import { Orchestrator } from "./orchestrator";
 import type { CreateSandboxInput, SandboxEventInput } from "./types";
@@ -53,6 +54,16 @@ app.post("/sandboxes/:id/stop", async (c) => {
   return record ? c.json({ sandbox: record }) : c.json({ error: "sandbox_not_found" }, 404);
 });
 
+app.post("/sandboxes/:id/restart", async (c) => {
+  const record = await orchestrator.restart(c.req.param("id"));
+  return record ? c.json({ sandbox: record }) : c.json({ error: "sandbox_not_restartable" }, 404);
+});
+
+app.delete("/sandboxes/:id", async (c) => {
+  const ok = await orchestrator.remove(c.req.param("id"));
+  return ok ? c.json({ ok: true }) : c.json({ error: "sandbox_not_found" }, 404);
+});
+
 /** Event channel used by the in-container supervisor and netwatch sidecar. */
 app.post("/internal/events", async (c) => {
   const body = await c.req.json().catch(() => null) as { sandboxId?: string; events?: SandboxEventInput[]; dropped?: number } | null;
@@ -66,7 +77,56 @@ if (!(await dockerAvailable())) {
   process.exit(1);
 }
 
-serve({ fetch: app.fetch, port: PORT }, (info) => {
+const server = serve({ fetch: app.fetch, port: PORT }, (info) => {
   console.log(`[sandbox] Aegis sandbox service listening on http://127.0.0.1:${info.port}`);
   console.log(`[sandbox] gateway for agents: ${GATEWAY_FOR_AGENTS}`);
+});
+
+// Interactive workspaces outlive the service: reattach to labeled containers.
+void orchestrator.adoptExisting().then((count) => {
+  if (count > 0) console.log(`[sandbox] adopted ${count} running sandbox container(s)`);
+});
+
+/**
+ * Terminal channel: WebSocket at /sandboxes/:id/terminal. Client sends JSON
+ * text frames {t:"i",d:"..."} for input and {t:"r",w,h} for resize; the
+ * server streams raw PTY output back as binary frames.
+ */
+const wss = new WebSocketServer({ noServer: true });
+server.on("upgrade", (request, socket, head) => {
+  const match = request.url?.match(/^\/sandboxes\/([^/]+)\/terminal$/);
+  if (!match) { socket.destroy(); return; }
+  const id = decodeURIComponent(match[1]);
+  const record = orchestrator.get(id);
+  if (!record || record.status !== "running" || !record.interactive) { socket.destroy(); return; }
+  wss.handleUpgrade(request, socket, head, (ws) => {
+    let session: Awaited<ReturnType<typeof execShell>> | undefined;
+    let closed = false;
+    const teardown = () => {
+      if (closed) return;
+      closed = true;
+      void session?.kill();
+      ws.close();
+    };
+    void execShell(id, {
+      onOutput: (chunk) => { if (!closed) ws.send(chunk); },
+      onExit: teardown,
+    }).then((created) => {
+      if (closed) { void created.kill(); return; }
+      session = created;
+      ws.on("message", (data, isBinary) => {
+        if (isBinary || !session) return;
+        try {
+          const message = JSON.parse(String(data)) as { t?: string; d?: string; w?: number; h?: number };
+          if (message.t === "i" && typeof message.d === "string") session.write(message.d);
+          else if (message.t === "r" && typeof message.w === "number" && typeof message.h === "number") void session.resize(message.w, message.h);
+        } catch { /* ignore malformed control frames */ }
+      });
+      ws.on("close", teardown);
+      ws.on("error", teardown);
+    }).catch((error) => {
+      console.error("[sandbox] terminal exec failed:", error instanceof Error ? error.message : String(error));
+      teardown();
+    });
+  });
 });
