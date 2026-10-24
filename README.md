@@ -342,6 +342,22 @@ and `POST /api/v1/sandboxes/:id/events` (service-side ingest). The dashboard
 gains a **Sandboxes** view with live output, the full observed timeline, and
 shadow-access alerts.
 
+## The desktop app
+
+`npm run desktop` launches the Aegis Control Plane as a native window
+(Tauri 2 — requires Rust and webkit2gtk on Linux). The app starts every
+service that is not already running (gateway :8787, sandbox service :8788,
+dashboard :3000), shows a splash with live status (including whether Docker
+is available), then loads the control plane. Closing the window tears down
+the services it started; service logs land in `data/desktop-logs/`.
+Services that were already running are reused, not duplicated.
+
+```
+┌─ Aegis Desktop ────────────────────────────────────────────┐
+│  Splash → dashboard → your agents, inside monitored boxes  │
+└────────────────────────────────────────────────────────────┘
+```
+
 ## Optional production integrations
 
 Set these environment variables when deploying:
