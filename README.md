@@ -283,6 +283,33 @@ npm run sandbox -- run -- bash -lc 'psql postgres://... -c "DELETE FROM users"'
 npm run sandbox -- run --mode enforce -- node /workspace/scripts/real-agent.ts
 ```
 
+Fire the repo's own terminal agent (a real LLM agent) inside a sandbox:
+
+```bash
+npm run sandbox -- run --workspace ./scripts \
+  --env GEMINI_API_KEY=... \
+  --stdin "list unpaid invoices" \
+  -- tsx real-agent.ts
+```
+
+`--workspace` copies a host directory into the sandbox before start (agents
+never touch the host filesystem), `--stdin` feeds the agent's REPL — append an
+`exit` line for a one-shot run, omit it to keep the agent alive until you stop
+the sandbox from the dashboard. `SENTINEL_GATEWAY_URL` is injected
+automatically so the agent's gateway tools route through Aegis. To simulate a
+compromised agent that ignores the gateway and uses raw credentials, point it
+at a watched host:
+
+```bash
+# observe: the attempt is recorded and alerted but succeeds
+npm run sandbox -- run -- bash -lc 'exec 3<>/dev/tcp/db.acme.internal/5432 && echo connected'
+# enforce: the connection is refused at the network layer and alerted
+npm run sandbox -- run --mode enforce -- bash -lc 'exec 3<>/dev/tcp/db.acme.internal/5432 && echo connected'
+```
+
+Watch it live in the dashboard's **Sandboxes** view (live output, full
+timeline, shadow-access alerts).
+
 Modes:
 
 - **observe** — record everything, alert on shadow access. Any DNS lookup or

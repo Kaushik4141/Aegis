@@ -109,6 +109,7 @@ export class Orchestrator {
       throw new Error("command must be a non-empty array of strings.");
     }
     if (input.name && (typeof input.name !== "string" || input.name.length > 160)) throw new Error("name must be a string of at most 160 characters.");
+    if (input.stdin !== undefined && (typeof input.stdin !== "string" || input.stdin.length > 8000)) throw new Error("stdin must be a string of at most 8000 characters.");
     await this.ensureImage();
 
     const id = `sb_${crypto.randomUUID().replace(/-/g, "").slice(0, 20)}`;
@@ -117,6 +118,12 @@ export class Orchestrator {
     const enforceDefault = input.enforceDefault === "allow" ? "allow" : "deny";
     const workspace = path.join(this.sandboxDir, id, "workspace");
     fs.mkdirSync(workspace, { recursive: true });
+    if (input.workspace) {
+      const source = path.resolve(input.workspace);
+      const stat = await fs.promises.stat(source).catch(() => null);
+      if (!stat?.isDirectory()) throw new Error(`workspace path is not a directory: ${source}`);
+      await fs.promises.cp(source, workspace, { recursive: true });
+    }
 
     const blockDomains = await this.gateway.connectionHosts();
     const blockIps: string[] = [];
@@ -155,6 +162,7 @@ export class Orchestrator {
         upstreamDns: this.upstreamDns(),
         mode,
         gatewayUrl: this.gatewayUrlForAgents,
+        agentStdin: input.stdin,
       });
       const gatewayIp = await hostGatewayIp(`aegis-sb-${id}`);
       await runNetwatch({

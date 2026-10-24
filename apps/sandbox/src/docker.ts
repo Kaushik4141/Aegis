@@ -60,6 +60,7 @@ export interface RunAgentOptions {
   upstreamDns: string;
   mode: "observe" | "enforce";
   gatewayUrl: string;
+  agentStdin?: string;
 }
 
 export async function runAgent(options: RunAgentOptions): Promise<void> {
@@ -74,8 +75,12 @@ export async function runAgent(options: RunAgentOptions): Promise<void> {
     "-e", `AEGIS_EVENT_URL=${options.eventUrl}`,
     "-e", `AEGIS_MODE=${options.mode}`,
     "-e", `AEGIS_GATEWAY_URL=${options.gatewayUrl}`,
+    // Agents inside the sandbox reach the Aegis gateway through the docker
+    // host gateway; inject the standard env unless the caller set one.
+    "-e", `SENTINEL_GATEWAY_URL=${options.env.SENTINEL_GATEWAY_URL || options.gatewayUrl}`,
     "--stop-signal", "SIGTERM",
   ];
+  if (options.agentStdin) args.push("-e", `AEGIS_AGENT_STDIN=${options.agentStdin}`);
   for (const [key, value] of Object.entries(options.env)) {
     args.push("-e", `${key}=${value}`);
   }

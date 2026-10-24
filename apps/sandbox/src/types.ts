@@ -43,4 +43,8 @@ export interface CreateSandboxInput {
   env?: Record<string, string>;
   mode?: SandboxMode;
   enforceDefault?: "allow" | "deny";
+  /** Host directory whose contents are copied into the sandbox workspace before start. */
+  workspace?: string;
+  /** Lines fed to the agent's stdin at startup (drives interactive REPL agents). */
+  stdin?: string;
 }

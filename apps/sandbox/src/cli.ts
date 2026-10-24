@@ -1,12 +1,17 @@
+import fs from "node:fs";
+import path from "node:path";
+
 /**
  * CLI front door for running an agent inside an Aegis sandbox.
  *
  *   npm run sandbox -- run [--mode observe|enforce] [--default allow|deny]
- *                      [--env KEY=VALUE]... [--name NAME] -- <command...>
+ *                      [--workspace DIR] [--stdin TEXT] [--env KEY=VALUE]...
+ *                      [--name NAME] -- <command...>
  *
  * Examples:
- *   npm run sandbox -- run -- bash -lc 'psql postgres://... -c "DELETE FROM users"'
- *   npm run sandbox -- run --mode enforce -- node scripts/real-agent.ts
+ *   npm run sandbox -- run --workspace ./scripts --env GEMINI_API_KEY=... \
+ *     --stdin "list unpaid invoices" -- tsx real-agent.ts
+ *   npm run sandbox -- run --mode enforce -- bash -lc 'psql postgres://...'
  */
 const SERVICE_URL = (process.env.AEGIS_SANDBOX_SERVICE_URL || "http://127.0.0.1:8788").replace(/\/$/, "");
 
@@ -16,6 +21,8 @@ interface CliOptions {
   name?: string;
   env: Record<string, string>;
   command: string[];
+  workspace?: string;
+  stdin?: string;
 }
 
 function parseArgs(argv: string[]): CliOptions {
@@ -28,6 +35,8 @@ function parseArgs(argv: string[]): CliOptions {
     if (flag === "--mode" && flagPart[i + 1]) { options.mode = flagPart[++i] === "enforce" ? "enforce" : "observe"; }
     else if (flag === "--default" && flagPart[i + 1]) { options.enforceDefault = flagPart[++i] === "allow" ? "allow" : "deny"; }
     else if (flag === "--name" && flagPart[i + 1]) { options.name = flagPart[++i]; }
+    else if (flag === "--workspace" && flagPart[i + 1]) { options.workspace = flagPart[++i]; }
+    else if (flag === "--stdin" && flagPart[i + 1]) { options.stdin = flagPart[++i]; }
     else if (flag === "--env" && flagPart[i + 1]) {
       const pair = flagPart[++i];
       const eq = pair.indexOf("=");
@@ -41,7 +50,11 @@ function parseArgs(argv: string[]): CliOptions {
 async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
   if (process.argv[2] !== "run" || options.command.length === 0) {
-    console.error('Usage: npm run sandbox -- run [--mode observe|enforce] [--default allow|deny] [--env KEY=VALUE]... [--name NAME] -- <command...>');
+    console.error('Usage: npm run sandbox -- run [--mode observe|enforce] [--default allow|deny] [--workspace DIR] [--stdin TEXT] [--env KEY=VALUE]... [--name NAME] -- <command...>');
+    process.exit(2);
+  }
+  if (options.workspace && !fs.existsSync(path.resolve(process.cwd(), options.workspace))) {
+    console.error(`workspace path does not exist: ${path.resolve(process.cwd(), options.workspace)}`);
     process.exit(2);
   }
 
@@ -54,6 +67,8 @@ async function main(): Promise<void> {
       env: options.env,
       mode: options.mode,
       enforceDefault: options.enforceDefault,
+      ...(options.workspace ? { workspace: path.resolve(process.cwd(), options.workspace) } : {}),
+      ...(options.stdin !== undefined ? { stdin: options.stdin } : {}),
     }),
   });
   if (!createResponse.ok) {

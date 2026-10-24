@@ -1159,6 +1159,8 @@ function SandboxesView({ notify }: { notify: (message: string) => void }) {
   const [command, setCommand] = useState("");
   const [mode, setMode] = useState<"observe" | "enforce">("observe");
   const [env, setEnv] = useState("");
+  const [workspace, setWorkspace] = useState("");
+  const [stdinText, setStdinText] = useState("");
   const [busy, setBusy] = useState(false);
   const [serviceUp, setServiceUp] = useState(true);
 
@@ -1209,7 +1211,14 @@ function SandboxesView({ notify }: { notify: (message: string) => void }) {
       const response = await fetch("/sandbox-api/sandboxes", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ name: name || undefined, command: parts, mode, env: parseMap(env) }),
+        body: JSON.stringify({
+          name: name || undefined,
+          command: parts,
+          mode,
+          env: parseMap(env),
+          ...(workspace.trim() ? { workspace: workspace.trim() } : {}),
+          ...(stdinText.trim() ? { stdin: stdinText } : {}),
+        }),
       });
       if (!response.ok) throw new Error((await response.json()).message || `HTTP ${response.status}`);
       const body = (await response.json()) as { sandbox?: SandboxRecordUi };
@@ -1278,7 +1287,7 @@ function SandboxesView({ notify }: { notify: (message: string) => void }) {
                 <input
                   value={command}
                   onChange={(event) => setCommand(event.target.value)}
-                  placeholder="node /workspace/scripts/real-agent.ts"
+                  placeholder="tsx real-agent.ts"
                   className="field-input mt-1 font-mono"
                 />
               </label>
@@ -1288,6 +1297,25 @@ function SandboxesView({ notify }: { notify: (message: string) => void }) {
                   value={env}
                   onChange={(event) => setEnv(event.target.value)}
                   placeholder={"GEMINI_API_KEY=..."}
+                  rows={2}
+                  className="field-input mt-1 font-mono"
+                />
+              </label>
+              <label className="block">
+                <span className="text-[9px] font-extrabold uppercase tracking-[.14em] text-slate-400">Workspace source dir (optional, copied in)</span>
+                <input
+                  value={workspace}
+                  onChange={(event) => setWorkspace(event.target.value)}
+                  placeholder="./scripts"
+                  className="field-input mt-1 font-mono"
+                />
+              </label>
+              <label className="block">
+                <span className="text-[9px] font-extrabold uppercase tracking-[.14em] text-slate-400">Agent input (fed to stdin, optional)</span>
+                <textarea
+                  value={stdinText}
+                  onChange={(event) => setStdinText(event.target.value)}
+                  placeholder={"list unpaid invoices\nexit"}
                   rows={2}
                   className="field-input mt-1 font-mono"
                 />

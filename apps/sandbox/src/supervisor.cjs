@@ -190,7 +190,6 @@ function main() {
   childEnv.HOME = "/home/agent";
   childEnv.USER = "agent";
   childEnv.TERM = childEnv.TERM || "xterm";
-  if (UPSTREAM_DNS) childEnv.AEGIS_UPSTREAM_DNS = UPSTREAM_DNS;
 
   log("start", `${command.join(" ")} (sandbox ${SANDBOX_ID})`);
   emit("lifecycle", { kind: "started", command, mode: process.env.AEGIS_MODE || "observe" });
@@ -207,11 +206,19 @@ function main() {
       env: childEnv,
       uid: AGENT_UID,
       gid: AGENT_GID,
-      stdio: ["ignore", "pipe", "pipe"],
+      stdio: ["pipe", "pipe", "pipe"],
     }).on("error", (error) => {
       emit("lifecycle", { kind: "exit", code: 127, error: `spawn failed: ${error.message}` });
       process.exit(127);
     });
+
+    // Interactive REPL agents are driven by feeding their startup lines; the
+    // stream is closed after so agents that read stdin to EOF also finish.
+    const startupStdin = process.env.AEGIS_AGENT_STDIN;
+    if (startupStdin !== undefined) {
+      child.stdin.write(startupStdin.endsWith("\n") ? startupStdin : `${startupStdin}\n`);
+      child.stdin.end();
+    }
 
     watchStream(child.stdout, "stdout");
     watchStream(child.stderr, "stderr");
