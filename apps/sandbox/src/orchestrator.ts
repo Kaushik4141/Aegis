@@ -3,7 +3,7 @@ import dns from "node:dns/promises";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { cleanupSandbox, ensureImage, exitCode, hostGatewayIp, imageName, isRunning, listAegisSandboxes, runAgent, runNetwatch, startSandbox, stopSandbox, stopSandboxKeep } from "./docker";
+import { cleanupSandbox, copyIntoWorkspace, ensureImage, exitCode, hostGatewayIp, imageName, isRunning, listAegisSandboxes, removeWorkspaceVolume, runAgent, runNetwatch, startSandbox, stopSandbox, stopSandboxKeep } from "./docker";
 import { GatewayClient } from "./gatewayClient";
 import type { CreateSandboxInput, SandboxEventInput, SandboxRecord } from "./types";
 
@@ -43,7 +43,9 @@ export class Orchestrator {
   private async ensureImage(): Promise<void> {
     let pending = this.imageReady;
     if (!pending) {
-      pending = ensureImage(path.join(here, "..", "images")).catch((error: unknown) => {
+      // Build context is the app root so the Dockerfile can COPY the
+      // supervisor and netwatch scripts into the image.
+      pending = ensureImage(path.join(here, "..")).catch((error: unknown) => {
         this.imageReady = null;
         throw error;
       });
@@ -145,18 +147,10 @@ export class Orchestrator {
     // plus exec terminals; the user works inside it like a normal machine.
     const interactive = command.length === 0;
     await this.ensureImage();
-
-    const id = `sb_${crypto.randomUUID().replace(/-/g, "").slice(0, 20)}`;
-    const now = new Date().toISOString();
-    const mode: "observe" | "enforce" = input.mode === "enforce" ? "enforce" : "observe";
-    const enforceDefault = input.enforceDefault === "allow" ? "allow" : "deny";
-    const workspace = path.join(this.sandboxDir, id, "workspace");
-    fs.mkdirSync(workspace, { recursive: true });
     if (input.workspace) {
       const source = path.resolve(input.workspace);
       const stat = await fs.promises.stat(source).catch(() => null);
       if (!stat?.isDirectory()) throw new Error(`workspace path is not a directory: ${source}`);
-      await fs.promises.cp(source, workspace, { recursive: true });
     }
 
     const blockDomains = await this.gateway.connectionHosts();
@@ -172,6 +166,11 @@ export class Orchestrator {
       ...DEFAULT_ALLOW_DOMAINS,
       ...(process.env.AEGIS_SANDBOX_ALLOW_DOMAINS || "").split(",").map((d) => d.trim()).filter(Boolean),
     ];
+
+    const id = `sb_${crypto.randomUUID().replace(/-/g, "").slice(0, 20)}`;
+    const now = new Date().toISOString();
+    const mode: "observe" | "enforce" = input.mode === "enforce" ? "enforce" : "observe";
+    const enforceDefault = input.enforceDefault === "allow" ? "allow" : "deny";
 
     const record: SandboxRecord = {
       id,
@@ -189,10 +188,8 @@ export class Orchestrator {
     try {
       await runAgent({
         id,
-        workspaceDir: workspace,
         command: interactive ? [] : command,
         env: input.env || {},
-        supervisorPath: path.join(here, "supervisor.cjs"),
         eventUrl: this.eventUrl,
         upstreamDns: this.upstreamDns(),
         mode,
@@ -205,7 +202,6 @@ export class Orchestrator {
       const gatewayIp = await hostGatewayIp(`aegis-sb-${id}`);
       await runNetwatch({
         id,
-        netwatchPath: path.join(here, "netwatch.cjs"),
         eventUrl: this.eventUrl,
         upstreamDns: this.upstreamDns(),
         mode,
@@ -216,6 +212,7 @@ export class Orchestrator {
         gatewayIps,
         hostGatewayIp: gatewayIp,
       });
+      if (input.workspace) await copyIntoWorkspace(id, path.resolve(input.workspace));
     } catch (error) {
       await cleanupSandbox(id).catch(() => undefined);
       record.status = "stopped";
@@ -289,7 +286,7 @@ export class Orchestrator {
     runtime.record.status = "stopped";
     runtime.record.report = { filesystem, eventCounts };
     this.runtimes.delete(id);
-    await fs.promises.rm(path.join(this.sandboxDir, id), { recursive: true, force: true }).catch(() => undefined);
+    await removeWorkspaceVolume(id);
     await this.gateway.announceSandbox({ id, name: runtime.record.name, command: runtime.record.command, mode: runtime.record.mode, status: "deleted", report: runtime.record.report });
     return true;
   }

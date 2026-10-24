@@ -352,6 +352,18 @@ is available), then loads the control plane. Closing the window tears down
 the services it started; service logs land in `data/desktop-logs/`.
 Services that were already running are reused, not duplicated.
 
+## Cloud deployment
+
+The same stack runs on any cloud VM with Docker — sandboxes are real Linux
+containers there, so the full instrumentation (netwatch, DNS logging,
+shadow-access alerts, enforce-mode iptables) works identically. See
+`deploy/cloud/README.md` for the one-command setup (`setup.sh` +
+`docker compose up`). Workspaces are daemon-side named volumes and the
+instrumentation is baked into the image, so the sandbox service is
+daemon-agnostic: point `DOCKER_HOST` at any reachable Docker daemon
+(`tcp://…` directly or over an SSH tunnel) and sandboxes are created there
+while events, alerts, and terminals keep flowing through your gateway.
+
 ```
 ┌─ Aegis Desktop ────────────────────────────────────────────┐
 │  Splash → dashboard → your agents, inside monitored boxes  │

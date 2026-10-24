@@ -22,14 +22,20 @@ export async function dockerAvailable(): Promise<boolean> {
   }
 }
 
-export async function ensureImage(imagesDir: string): Promise<void> {
+/** Build context is the sandbox app dir: instrumentation is COPYed in. */
+export async function ensureImage(appRoot: string): Promise<void> {
   const existing = await docker(["images", "-q", IMAGE_TAG]);
   if (existing.trim()) return;
-  await docker(["build", "-t", IMAGE_TAG, "-f", path.join(imagesDir, "Dockerfile"), imagesDir], { timeoutMs: 600_000 });
+  await docker(["build", "-t", IMAGE_TAG, "-f", path.join(appRoot, "images", "Dockerfile"), appRoot], { timeoutMs: 600_000 });
 }
 
 export function imageName(containerId: string): { agent: string; netwatch: string } {
   return { agent: `aegis-sb-${containerId}`, netwatch: `aegis-sb-${containerId}-net` };
+}
+
+/** Daemon-side workspace volume: identical behavior on local and remote Docker. */
+export function workspaceVolume(containerId: string): string {
+  return `aegis-ws-${containerId}`;
 }
 
 export async function isRunning(container: string): Promise<boolean> {
@@ -53,10 +59,8 @@ export async function exitCode(container: string): Promise<number | undefined> {
 
 export interface RunAgentOptions {
   id: string;
-  workspaceDir: string;
   command: string[];
   env: Record<string, string>;
-  supervisorPath: string;
   eventUrl: string;
   upstreamDns: string;
   mode: "observe" | "enforce";
@@ -77,8 +81,10 @@ export async function runAgent(options: RunAgentOptions): Promise<void> {
     "--label", `aegis.interactive=${options.interactive ? "1" : "0"}`,
     "--label", `aegis.command=${options.commandLabel}`,
     "--add-host=host.docker.internal:host-gateway",
-    "-v", `${options.workspaceDir}:/workspace`,
-    "-v", `${options.supervisorPath}:/aegis/supervisor.cjs:ro`,
+    // Named volume (auto-created by the daemon) instead of a host bind mount:
+    // identical on local and remote daemons, and nothing on the service host
+    // is ever exposed to the sandbox.
+    "-v", `${workspaceVolume(options.id)}:/workspace`,
     "-w", "/workspace",
     "-e", `AEGIS_SANDBOX_ID=${options.id}`,
     "-e", `AEGIS_EVENT_URL=${options.eventUrl}`,
@@ -93,13 +99,13 @@ export async function runAgent(options: RunAgentOptions): Promise<void> {
   for (const [key, value] of Object.entries(options.env)) {
     args.push("-e", `${key}=${value}`);
   }
+  // supervisor.cjs is baked into the image (see images/Dockerfile).
   args.push(IMAGE_TAG, "node", "/aegis/supervisor.cjs", "--", ...options.command);
   await docker(args);
 }
 
 export interface RunNetwatchOptions {
   id: string;
-  netwatchPath: string;
   eventUrl: string;
   upstreamDns: string;
   mode: "observe" | "enforce";
@@ -115,13 +121,13 @@ export async function runNetwatch(options: RunNetwatchOptions): Promise<void> {
   const { agent, netwatch } = imageName(options.id);
   // The sidecar shares the agent's network namespace, so --add-host is not
   // allowed here; the host-gateway IP is read from the agent container.
+  // netwatch.cjs is baked into the image.
   const args = [
     "run", "-d", "--name", netwatch,
     "--label", `aegis.sandbox=${options.id}`,
     "--network", `container:${agent}`,
     "--pid", `container:${agent}`,
     "--cap-add", "NET_ADMIN",
-    "-v", `${options.netwatchPath}:/aegis/netwatch.cjs:ro`,
     "-e", `AEGIS_SANDBOX_ID=${options.id}`,
     "-e", `AEGIS_EVENT_URL=${options.eventUrl}`,
     "-e", `AEGIS_UPSTREAM_DNS=${options.upstreamDns}`,
@@ -147,6 +153,21 @@ export async function hostGatewayIp(container: string): Promise<string> {
   } catch {
     return "";
   }
+}
+
+/**
+ * Seed a running sandbox workspace from a host directory: stream the contents
+ * in via `docker cp` and hand them to the agent user. Works identically
+ * against remote daemons — the bytes travel over the docker API.
+ */
+export async function copyIntoWorkspace(id: string, sourceDir: string): Promise<void> {
+  const { agent } = imageName(id);
+  await docker(["cp", `${sourceDir}/.`, `${agent}:/workspace/`], { timeoutMs: 300_000 });
+  await docker(["exec", "-u", "0", agent, "chown", "-R", "1000:1000", "/workspace"]).catch(() => undefined);
+}
+
+export async function removeWorkspaceVolume(id: string): Promise<void> {
+  await docker(["volume", "rm", workspaceVolume(id)]).catch(() => undefined);
 }
 
 export interface AdoptedSandbox {
@@ -234,7 +255,38 @@ export async function startSandbox(id: string): Promise<void> {
 
 /* ------------------------------ terminal exec ------------------------------ */
 
-const dockerApi = new Dockerode();
+/**
+ * Docker API client for exec/PTY streams. DOCKER_HOST selects the daemon:
+ *   unset | unix:///...  → local socket (default /var/run/docker.sock)
+ *   tcp://host:port      → remote or tunneled daemon
+ *   ssh://user@host      → use `ssh -L` + tcp:// instead (dockerode's ssh
+ *                          transport needs the optional ssh2 native module)
+ */
+export function dockerDaemon(): Dockerode {
+  const host = process.env.DOCKER_HOST?.trim();
+  if (!host) return new Dockerode();
+  if (host.startsWith("unix://")) {
+    return new Dockerode({ socketPath: host.replace("unix://", "") });
+  }
+  if (host.startsWith("tcp://") || host.startsWith("http://")) {
+    const url = new URL(host.replace("tcp://", "http://"));
+    return new Dockerode({
+      host: url.hostname,
+      port: url.port ? Number(url.port) : 2375,
+      protocol: "http",
+    });
+  }
+  // Anything else (ssh://, npipe://): let dockerode try, with a clear error.
+  console.warn(`[sandbox] unsupported DOCKER_HOST "${host}" for exec streams; tunnel it and use tcp://`);
+  return new Dockerode();
+}
+
+let dockerApi: Dockerode | undefined;
+
+function api(): Dockerode {
+  if (!dockerApi) dockerApi = dockerDaemon();
+  return dockerApi;
+}
 
 export interface ExecSession {
   write(input: string): void;
@@ -252,7 +304,7 @@ export async function execShell(
   handlers: { onOutput: (chunk: Buffer) => void; onExit: () => void },
 ): Promise<ExecSession> {
   const { agent } = imageName(id);
-  const container = dockerApi.getContainer(agent);
+  const container = api().getContainer(agent);
   const execOptions: Dockerode.ExecCreateOptions = {
     Cmd: ["bash"],
     AttachStdin: true,

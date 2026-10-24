@@ -1152,7 +1152,17 @@ const sandboxEventTone = (type: string): "red" | "amber" | "green" | "slate" | "
 const splitCommand = (value: string): string[] =>
   (value.match(/"([^"]*)"|'([^']*)'|(\S+)/g) || []).map((part) => part.replace(/^["']|["']$/g, "")).filter(Boolean);
 
-const SANDBOX_WS_PORT = process.env.NEXT_PUBLIC_SANDBOX_WS_PORT || "8788";
+// Terminal WebSocket origin: same host by default; set NEXT_PUBLIC_SANDBOX_WS_URL
+// (e.g. wss://sandboxes.example.com) when the dashboard is served from a
+// different origin than the sandbox service — cloud deployments.
+const SANDBOX_WS_BASE = process.env.NEXT_PUBLIC_SANDBOX_WS_URL?.trim() || null;
+
+function sandboxTerminalUrl(sandboxId: string): string {
+  const target = encodeURIComponent(sandboxId);
+  if (SANDBOX_WS_BASE) return `${SANDBOX_WS_BASE.replace(/\/$/, "")}/sandboxes/${target}/terminal`;
+  const protocol = typeof window !== "undefined" && window.location.protocol === "https:" ? "wss" : "ws";
+  return `${protocol}://${window.location.hostname}:${process.env.NEXT_PUBLIC_SANDBOX_WS_PORT || "8788"}/sandboxes/${target}/terminal`;
+}
 
 function SandboxTerminal({ sandboxId, onClosed }: { sandboxId: string; onClosed: () => void }) {
   const hostRef = useRef<HTMLDivElement>(null);
@@ -1175,8 +1185,7 @@ function SandboxTerminal({ sandboxId, onClosed }: { sandboxId: string; onClosed:
       term.open(hostRef.current);
       fit.fit();
 
-      const protocol = window.location.protocol === "https:" ? "wss" : "ws";
-      socket = new WebSocket(`${protocol}://${window.location.hostname}:${SANDBOX_WS_PORT}/sandboxes/${encodeURIComponent(sandboxId)}/terminal`);
+      socket = new WebSocket(sandboxTerminalUrl(sandboxId));
       socket.binaryType = "arraybuffer";
       socket.onopen = () => socket?.send(JSON.stringify({ t: "r", w: term?.cols || 100, h: term?.rows || 28 }));
       socket.onmessage = (event) => {

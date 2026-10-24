@@ -10,6 +10,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # coding agents are preinstalled so users drop straight into their normal tools.
 RUN npm install -g tsx @anthropic-ai/claude-code @openai/codex
 
+# Instrumentation is baked in (not bind-mounted) so the same image works
+# against any Docker daemon — local or remote.
+COPY src/supervisor.cjs /aegis/supervisor.cjs
+COPY src/netwatch.cjs /aegis/netwatch.cjs
+
 # The official node image ships a `node` user with uid/gid 1000; agents run as
 # that unprivileged user (supervisor drops privileges by uid).
 
