@@ -15,43 +15,51 @@ import {
 import "@xyflow/react/dist/style.css";
 import {
   Activity,
+  AlertCircle,
   AlertTriangle,
+  ArrowUpRight,
   Bot,
   Check,
+  CheckCircle2,
   ChevronRight,
-  CircleHelp,
+  Clock,
   Cloud,
   Code2,
   Copy,
   Database,
-  FileKey2,
+  ExternalLink,
+  FileText,
+  Filter,
   Github,
   KeyRound,
-  LayoutGrid,
+  Layers,
   Link2,
-  LockKeyhole,
-  Menu,
-  Network,
+  Lock,
   Pause,
+  Play,
   Plus,
-  Radio,
   RefreshCw,
+  Search,
   Server,
+  Shield,
+  ShieldAlert,
   ShieldCheck,
-  Sparkles,
   Terminal,
   Trash2,
-  UserRound,
+  User,
   X,
+  XCircle,
   Zap,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
+// --- Types ---
 
 type GatewayState = "idle" | "allowed" | "approved" | "pending_approval" | "blocked" | "frozen";
 type Transport = "stdio" | "streamable-http" | "sse";
-type View = "topology" | "connections";
+type ActiveTab = "topology" | "approvals" | "activity" | "mcp";
 
-type Action = {
+interface Action {
   id: string;
   actorId: string;
   tool: string;
@@ -63,9 +71,9 @@ type Action = {
   score: number;
   timestamp: string;
   payload?: unknown;
-};
+}
 
-type AuditEvent = {
+interface AuditEvent {
   id: string;
   type: string;
   actionId: string;
@@ -73,9 +81,9 @@ type AuditEvent = {
   actorId?: string;
   reason?: string;
   toStatus: string;
-};
+}
 
-type Connection = {
+interface Connection {
   id: string;
   name: string;
   transport: Transport;
@@ -88,9 +96,9 @@ type Connection = {
   secretKeys: string[];
   hasSecrets: boolean;
   token?: string;
-};
+}
 
-type OAuthStatus = {
+interface OAuthStatus {
   configured?: boolean;
   supported?: boolean;
   authorized?: boolean;
@@ -98,32 +106,36 @@ type OAuthStatus = {
   error?: string;
   tokenExpiresAt?: string;
   clientRegistration?: string;
-};
+}
 
-type OAuthDisplay = {
-  label: "not connected" | "signing in" | "connected" | "needs reauth" | "unavailable";
-  tone: "red" | "amber" | "green" | "slate";
-  detail: string;
-};
+interface Tool {
+  name: string;
+  description?: string;
+  inputSchema?: unknown;
+}
 
-type Tool = { name: string; description?: string; inputSchema?: unknown };
-type Discovery = { tools?: Tool[]; serverInfo?: { name?: string; version?: string }; instructions?: string };
-type ClientConfig = {
+interface Discovery {
+  tools?: Tool[];
+  serverInfo?: { name?: string; version?: string };
+  instructions?: string;
+}
+
+interface ClientConfig {
   connectionId: string;
   mcp: { url: string; headers?: Record<string, string> };
   claudeDesktop: Record<string, unknown>;
   cursor: Record<string, unknown>;
   note?: string;
-};
+}
 
-type DbSummary = {
+interface DbSummary {
   customers: number;
   billing: number;
   bucketCount: number;
   gitBranch: string;
-};
+}
 
-type FormState = {
+interface FormState {
   name: string;
   transport: Transport;
   url: string;
@@ -132,7 +144,7 @@ type FormState = {
   cwd: string;
   env: string;
   auth: string;
-};
+}
 
 const emptyForm: FormState = {
   name: "",
@@ -145,82 +157,7 @@ const emptyForm: FormState = {
   auth: "",
 };
 
-const toneForState = (state: GatewayState): "red" | "amber" | "green" | "slate" | "blue" =>
-  state === "blocked"
-    ? "red"
-    : state === "allowed" || state === "approved"
-    ? "green"
-    : state === "pending_approval" || state === "frozen"
-    ? "amber"
-    : "slate";
-
-const badgeClass = (tone: "red" | "amber" | "green" | "slate" | "blue") =>
-  ({
-    red: "bg-red-50 text-red-700 ring-red-100",
-    amber: "bg-amber-50 text-amber-700 ring-amber-100",
-    green: "bg-emerald-50 text-emerald-700 ring-emerald-100",
-    slate: "bg-slate-100 text-slate-600 ring-slate-200",
-    blue: "bg-blue-50 text-blue-700 ring-blue-100",
-  }[tone]);
-
-function oauthDisplay(connection: Connection, status?: OAuthStatus): OAuthDisplay {
-  if (connection.transport === "stdio") return { label: "unavailable", tone: "slate", detail: "OAuth is not used for stdio connections." };
-  if (!status) return { label: "not connected", tone: "slate", detail: "No account is connected yet." };
-  if (status.pending) return { label: "signing in", tone: "amber", detail: "Waiting for sign-in to finish in the browser." };
-  if (status.error || status.supported === false) return { label: "unavailable", tone: "red", detail: status.error || "This MCP server does not advertise OAuth." };
-  if (status.authorized && status.tokenExpiresAt && new Date(status.tokenExpiresAt).getTime() <= Date.now()) return { label: "needs reauth", tone: "amber", detail: "The saved OAuth session has expired." };
-  if (status.authorized) return { label: "connected", tone: "green", detail: "OAuth account connected." };
-  return { label: "not connected", tone: "slate", detail: "Connect an account to authorize this MCP server." };
-}
-
-function StatusPill({ children, tone = "slate", dot = false }: { children: React.ReactNode; tone?: "red" | "amber" | "green" | "slate" | "blue"; dot?: boolean }) {
-  return (
-    <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-[.08em] ring-1 ${badgeClass(tone)}`}>
-      {dot && <span className="h-1.5 w-1.5 rounded-full bg-current" />}
-      {children}
-    </span>
-  );
-}
-
-function Panel({ children, className = "" }: { children: React.ReactNode; className?: string }) {
-  return <section className={`rounded-2xl border border-slate-200 bg-white shadow-panel ${className}`}>{children}</section>;
-}
-
-function SectionHeading({ icon, eyebrow, title, action }: { icon?: React.ReactNode; eyebrow?: string; title: string; action?: React.ReactNode }) {
-  return (
-    <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-5 py-4">
-      <div className="flex items-start gap-3">
-        {icon && <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-blue-50 text-blue-600">{icon}</div>}
-        <div>
-          {eyebrow && <p className="text-[9px] font-extrabold uppercase tracking-[.16em] text-slate-400">{eyebrow}</p>}
-          <h2 className="mt-1 text-[13px] font-extrabold text-slate-900">{title}</h2>
-        </div>
-      </div>
-      {action}
-    </div>
-  );
-}
-
-function parseMap(value: string): Record<string, string> | undefined {
-  const entries = value
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => {
-      const index = line.indexOf("=") >= 0 ? line.indexOf("=") : line.indexOf(":");
-      return index > 0 ? ([line.slice(0, index).trim(), line.slice(index + 1).trim()] as const) : null;
-    })
-    .filter((entry): entry is readonly [string, string] => Boolean(entry));
-  return entries.length ? Object.fromEntries(entries) : undefined;
-}
-
-function nameFromUrl(value: string): string {
-  try {
-    return new URL(value).hostname.replace(/^www\./, "") || "MCP server";
-  } catch {
-    return "MCP server";
-  }
-}
+// --- Helper Functions ---
 
 function normalizeActorName(actorId?: string): string {
   if (!actorId) return "Antigravity";
@@ -244,7 +181,7 @@ function apiAction(raw: Record<string, unknown>, connections: Connection[] = [])
       summary: "Live gateway action",
       state: "idle",
       score: 0,
-      timestamp: "just now",
+      timestamp: "Just now",
     };
   }
   const analysis = (raw.analysis && typeof raw.analysis === "object" ? raw.analysis : {}) as Record<string, unknown>;
@@ -258,1010 +195,330 @@ function apiAction(raw: Record<string, unknown>, connections: Connection[] = [])
   let target = "target_telemetry";
   let targetTitle = "Host Telemetry";
 
-  const connId = String(payload.connectionId || "");
-  const matchedConn = connections.find(
-    (c) => c.id === connId || resource.includes(c.id) || text.includes(c.name.toLowerCase())
-  );
-
-  if (matchedConn) {
-    target = `target_conn_${matchedConn.id}`;
-    targetTitle = matchedConn.name === "mcp.cloudflare.com" ? "Cloudflare MCP" : matchedConn.name;
-  } else if (text.includes("cloudflare") || text.includes("d1") || text.includes("customer") || text.includes("billing") || text.includes("sql")) {
+  if (text.includes("customer") || text.includes("billing") || text.includes("sql") || text.includes("d1")) {
     target = "target_cloudflare_d1";
     targetTitle = "Cloudflare D1 (Cloud)";
-  } else if (text.includes("s3") || text.includes("bucket")) {
+  } else if (text.includes("s3") || text.includes("bucket") || text.includes("file") || text.includes("export")) {
     target = "target_s3";
-    targetTitle = "Local S3 Bucket";
-  } else if (text.includes("git") || text.includes("repo")) {
+    targetTitle = "Local S3 Storage";
+  } else if (text.includes("git") || text.includes("repo") || text.includes("commit") || text.includes("branch")) {
     target = "target_git";
     targetTitle = "Git Repository";
+  } else {
+    for (const conn of connections) {
+      if (text.includes(conn.name.toLowerCase())) {
+        target = `target_conn_${conn.id}`;
+        targetTitle = conn.name;
+        break;
+      }
+    }
   }
 
-  const score = Number(decision.riskScore ?? (analysis.risk === "high" ? 90 : analysis.risk === "medium" ? 60 : 15));
+  const rawState = String(decision.status || raw.status || raw.state || "allowed").toLowerCase();
+  const state: GatewayState =
+    rawState === "approved"
+      ? "approved"
+      : rawState === "blocked"
+      ? "blocked"
+      : rawState === "pending_approval" || rawState === "pending"
+      ? "pending_approval"
+      : rawState === "frozen"
+      ? "frozen"
+      : rawState === "allowed"
+      ? "allowed"
+      : "idle";
+
   return {
-    id: String(raw.id),
+    id: String(raw.id || `act_${Date.now()}`),
     actorId,
     tool,
     target,
     targetTitle,
     resource,
-    summary: String(analysis.summary || decision.reason || "Live gateway action"),
-    state: (raw.status as GatewayState) || "pending_approval",
-    score,
-    timestamp: raw.updatedAt ? new Date(String(raw.updatedAt)).toLocaleTimeString() : "just now",
-    payload: raw.payload,
+    summary: String(analysis.reason || raw.summary || raw.note || `${tool} on ${resource}`),
+    state,
+    score: typeof raw.score === "number" ? raw.score : typeof analysis.riskScore === "number" ? analysis.riskScore : state === "blocked" ? 92 : state === "pending_approval" ? 75 : 10,
+    timestamp: raw.createdAt ? new Date(String(raw.createdAt)).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "Just now",
+    payload: raw.payload || raw.params || raw.args || null,
   };
 }
 
-type IdentityData = { name: string; email: string };
-type AgentData = { state: GatewayState; agentName: string; activeTargetTitle?: string };
-type TargetData = {
+// --- Status Badge Component ---
+
+function StatusBadge({ state, dot = true }: { state: GatewayState; dot?: boolean }) {
+  const styles: Record<GatewayState, { bg: string; text: string; border: string; dot: string; label: string }> = {
+    approved: { bg: "bg-emerald-50", text: "text-emerald-700", border: "border-emerald-200", dot: "bg-emerald-500", label: "Approved" },
+    allowed: { bg: "bg-emerald-50", text: "text-emerald-700", border: "border-emerald-200", dot: "bg-emerald-500", label: "Allowed" },
+    blocked: { bg: "bg-rose-50", text: "text-rose-700", border: "border-rose-200", dot: "bg-rose-500", label: "Blocked" },
+    pending_approval: { bg: "bg-amber-50", text: "text-amber-800", border: "border-amber-200", dot: "bg-amber-500", label: "Pending Review" },
+    frozen: { bg: "bg-blue-50", text: "text-blue-700", border: "border-blue-200", dot: "bg-blue-500", label: "Frozen" },
+    idle: { bg: "bg-slate-100", text: "text-slate-600", border: "border-slate-200", dot: "bg-slate-400", label: "Idle" },
+  };
+
+  const style = styles[state] || styles.idle;
+
+  return (
+    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-medium border ${style.bg} ${style.text} ${style.border}`}>
+      {dot && <span className={`w-1.5 h-1.5 rounded-full ${style.dot}`} />}
+      {style.label}
+    </span>
+  );
+}
+
+// --- ReactFlow Custom Nodes ---
+
+interface IdentityData extends Record<string, unknown> {
+  name: string;
+  email: string;
+}
+
+interface AgentData extends Record<string, unknown> {
+  agentName: string;
+  state: GatewayState;
+  activeTargetTitle?: string;
+}
+
+interface TargetData extends Record<string, unknown> {
   id: string;
   title: string;
   subtitle: string;
-  tone: "red" | "amber" | "green" | "blue";
   icon: React.ReactNode;
-  children: React.ReactNode;
-  state?: GatewayState;
+  detail: string;
   isActive?: boolean;
-};
+  state?: GatewayState;
+}
 
-type IdentityFlowNode = Node<IdentityData, "identity">;
-type AgentFlowNode = Node<AgentData, "agent">;
-type TargetFlowNode = Node<TargetData, "target">;
-
-function NodeFrame({ children, warning = false, className = "" }: { children: React.ReactNode; warning?: boolean; className?: string }) {
+function IdentityFlowNode({ data }: NodeProps<Node<IdentityData>>) {
   return (
-    <div className={`relative rounded-xl border bg-white shadow-panel transition-all ${warning ? "border-red-300 ring-2 ring-red-100" : "border-slate-200"} ${className}`}>
-      {children}
+    <div className="bg-white border border-slate-300 rounded-lg shadow-sm p-3.5 w-[210px]">
+      <Handle type="source" position={Position.Right} className="!bg-slate-400" />
+      <div className="flex items-center gap-2.5">
+        <div className="w-8 h-8 rounded-md bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-700 shrink-0">
+          <User size={16} />
+        </div>
+        <div className="min-w-0">
+          <p className="text-xs font-semibold text-slate-900 truncate">{data.name}</p>
+          <p className="text-[11px] text-slate-500 truncate">{data.email}</p>
+        </div>
+      </div>
+      <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
+        <span>Operator Session</span>
+        <span className="text-emerald-600 font-medium">Local</span>
+      </div>
     </div>
   );
 }
 
-function IdentityNode({ data }: NodeProps<IdentityFlowNode>) {
+function AgentFlowNode({ data }: NodeProps<Node<AgentData>>) {
+  const isAlert = data.state === "pending_approval" || data.state === "blocked" || data.state === "frozen";
+
   return (
-    <NodeFrame className="w-[230px] overflow-hidden">
-      <Handle type="source" position={Position.Right} />
-      <div className="flex items-start gap-3 px-4 py-3.5">
-        <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-slate-900 text-white">
-          <UserRound size={17} />
+    <div className={`bg-white border rounded-lg shadow-sm p-3.5 w-[230px] transition-colors ${isAlert ? "border-amber-400 ring-2 ring-amber-100" : "border-slate-300"}`}>
+      <Handle type="target" position={Position.Left} className="!bg-slate-400" />
+      <Handle type="source" position={Position.Right} className="!bg-slate-400" />
+      <div className="flex items-center gap-2.5">
+        <div className="w-8 h-8 rounded-md bg-slate-900 flex items-center justify-center text-white shrink-0">
+          <Bot size={16} />
         </div>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-[13px] font-bold text-slate-900">{data.name}</p>
-          <p className="mt-0.5 text-[10px] font-medium text-slate-500">Identity root · live host</p>
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold text-slate-900 truncate">{data.agentName}</p>
+            {isAlert && <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />}
+          </div>
+          <p className="text-[11px] text-slate-500 truncate">{data.activeTargetTitle ? `Target: ${data.activeTargetTitle}` : "Active Client"}</p>
         </div>
       </div>
-      <div className="border-t border-slate-100 bg-rose-50/70 px-4 py-2.5">
-        <StatusPill tone="red">Host · {data.email}</StatusPill>
+      <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between">
+        <span className="text-[11px] text-slate-500">Firewall status</span>
+        <StatusBadge state={data.state} />
       </div>
-    </NodeFrame>
-  );
-}
-
-function AgentNode({ data }: NodeProps<AgentFlowNode>) {
-  const isPendingOrFrozen = data.state === "pending_approval" || data.state === "frozen";
-  const isBlocked = data.state === "blocked";
-  const active = isPendingOrFrozen || isBlocked;
-  return (
-    <div className={active ? "action-pulse rounded-[14px]" : ""}>
-      <NodeFrame warning={active} className="w-[245px]">
-        <Handle type="target" position={Position.Left} />
-        <Handle type="source" position={Position.Right} />
-        <div className="flex items-center gap-3 px-4 py-4">
-          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#171923] text-white">
-            <Sparkles size={18} className="text-cyan-300" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-[13px] font-bold text-slate-900">{data.agentName}</p>
-            <p className="mt-0.5 truncate text-[10px] font-medium text-slate-500">
-              {data.activeTargetTitle ? `Target: ${data.activeTargetTitle}` : "Active gateway client"}
-            </p>
-          </div>
-          {active && <span className="ml-auto h-2.5 w-2.5 shrink-0 animate-pulse rounded-full bg-red-500" />}
-        </div>
-        <div className="border-t border-slate-100 px-4 py-2.5">
-          <StatusPill tone={toneForState(data.state)} dot>
-            {data.state === "idle" ? "Ready · No active call" : data.state.replace("_", " ")}
-          </StatusPill>
-        </div>
-      </NodeFrame>
     </div>
   );
 }
 
-function TargetNode({ data }: NodeProps<TargetFlowNode>) {
-  const isPendingOrFrozen = data.state === "pending_approval" || data.state === "frozen";
-  const isBlocked = data.state === "blocked";
-  const hasWarning = (isPendingOrFrozen || isBlocked) && data.isActive;
+function TargetFlowNode({ data }: NodeProps<Node<TargetData>>) {
+  const isAlert = data.isActive && (data.state === "pending_approval" || data.state === "blocked");
 
   return (
-    <NodeFrame warning={hasWarning} className={`w-[268px] overflow-hidden ${data.isActive ? "ring-2 ring-blue-500/50 shadow-md" : ""}`}>
-      <Handle type="target" position={Position.Left} />
-      <div className="flex items-start gap-3 px-4 py-3.5">
-        <div className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg ring-1 ${data.isActive ? "bg-blue-50 text-blue-600 ring-blue-200" : "bg-slate-50 text-slate-700 ring-slate-200"}`}>
+    <div className={`bg-white border rounded-lg shadow-sm p-3 w-[240px] transition-all ${data.isActive ? "border-blue-500 ring-2 ring-blue-50" : "border-slate-300"} ${isAlert ? "border-amber-400 ring-2 ring-amber-100" : ""}`}>
+      <Handle type="target" position={Position.Left} className="!bg-slate-400" />
+      <div className="flex items-start gap-2.5">
+        <div className={`w-7 h-7 rounded-md border flex items-center justify-center shrink-0 mt-0.5 ${data.isActive ? "bg-blue-50 border-blue-200 text-blue-700" : "bg-slate-50 border-slate-200 text-slate-600"}`}>
           {data.icon}
         </div>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-[12px] font-bold text-slate-900">{data.title}</p>
-          <p className="mt-1 flex items-center gap-1.5 text-[10px] text-slate-500">
-            <span
-              className={`h-1.5 w-1.5 rounded-full ${
-                data.tone === "red"
-                  ? "bg-red-500"
-                  : data.tone === "green"
-                  ? "bg-emerald-500"
-                  : data.tone === "blue"
-                  ? "bg-blue-500"
-                  : "bg-amber-400"
-              }`}
-            />
-            {data.subtitle}
-          </p>
+          <div className="flex items-center justify-between gap-1">
+            <p className="text-xs font-semibold text-slate-900 truncate">{data.title}</p>
+            {data.isActive && <span className="text-[10px] font-medium text-blue-600 bg-blue-50 px-1 rounded">Active</span>}
+          </div>
+          <p className="text-[11px] text-slate-500 truncate">{data.subtitle}</p>
+          <div className="mt-1.5 text-[11px] text-slate-600 font-mono bg-slate-50 p-1 rounded border border-slate-100 truncate">
+            {data.detail}
+          </div>
         </div>
-        {data.isActive && (
-          <span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${isPendingOrFrozen || isBlocked ? "animate-pulse bg-red-500" : "animate-ping bg-emerald-500"}`} />
-        )}
       </div>
-      <div className="border-t border-slate-100 px-4 py-2.5 text-[10px] font-medium text-slate-500">{data.children}</div>
-    </NodeFrame>
-  );
-}
-
-function buildTopology(
-  state: GatewayState,
-  identity: IdentityData,
-  connections: Connection[],
-  summary: DbSummary,
-  selectedAction: Action | null,
-  activeAgentName: string
-): { nodes: Node[]; edges: Edge[] } {
-  const activeTargetId = selectedAction?.target || "target_cloudflare_d1";
-
-  // Build target list dynamically
-  const targets: TargetData[] = [
-    {
-      id: "target_cloudflare_d1",
-      title: "Cloudflare D1 (Cloud)",
-      subtitle: "d1 · sentinelgate-d1 (Singapore)",
-      tone: "green",
-      icon: <Database size={15} />,
-      children: (
-        <span className="font-mono text-[9px] leading-5 text-slate-500">
-          ├── <b className="text-slate-700">CUSTOMERS</b> ({summary.customers} rows)<br />
-          └── <b className="text-slate-700">BILLING</b> ({summary.billing} rows)
-        </span>
-      ),
-    },
-  ];
-
-  // Add all registered dynamic MCP connections
-  for (const conn of connections) {
-    const isCloudflare = conn.name.includes("cloudflare");
-    targets.push({
-      id: `target_conn_${conn.id}`,
-      title: isCloudflare ? "Cloudflare MCP" : conn.name,
-      subtitle: `${conn.transport} · ${conn.name}`,
-      tone: "blue",
-      icon: isCloudflare ? <Cloud size={15} /> : <Server size={15} />,
-      children: isCloudflare ? (
-        <div className="space-y-1">
-          <div className="flex items-center justify-between text-[9px]">
-            <span className="font-semibold text-slate-700">Cloud API Proxy</span>
-            <span className="rounded bg-blue-50 px-1 py-0.5 text-[8px] font-bold text-blue-600">Active</span>
-          </div>
-          <p className="truncate font-mono text-[9px] text-slate-400">tools: docs, search, execute, whoami</p>
-        </div>
-      ) : (
-        <span className="truncate block font-mono text-[9px] text-slate-500">
-          {conn.transport === "stdio" ? [conn.command, ...(conn.args || [])].join(" ") : conn.url}
-        </span>
-      ),
-    });
-  }
-
-  // Add Local Enterprise Targets
-  targets.push(
-    {
-      id: "target_s3",
-      title: "Local S3 Storage",
-      subtitle: "s3 · customer-pii bucket",
-      tone: "amber",
-      icon: <Cloud size={15} />,
-      children: (
-        <span>
-          <b className="text-slate-700">customer-pii</b> · {summary.bucketCount} export files
-        </span>
-      ),
-    },
-    {
-      id: "target_git",
-      title: "Git Repository",
-      subtitle: "git · data/acme-repo",
-      tone: "amber",
-      icon: <Github size={15} />,
-      children: <span>Protected branch: {summary.gitBranch}</span>,
-    },
-    {
-      id: "target_telemetry",
-      title: "Host Telemetry",
-      subtitle: "system · host monitor",
-      tone: "green",
-      icon: <Activity size={15} />,
-      children: (
-        <span className="flex items-center gap-1.5">
-          <ShieldCheck size={12} className="text-emerald-600" />
-          <span>Host credentials & telemetry isolated</span>
-        </span>
-      ),
-    }
-  );
-
-  const spacing = 135;
-  const totalHeight = targets.length * spacing;
-  const centerY = Math.max(180, (totalHeight / 2) - 30);
-
-  const nodes: Node[] = [
-    {
-      id: "identity",
-      type: "identity",
-      position: { x: 20, y: centerY },
-      data: identity,
-    },
-    {
-      id: "agent",
-      type: "agent",
-      position: { x: 310, y: centerY - 10 },
-      data: {
-        state,
-        agentName: activeAgentName,
-        activeTargetTitle: selectedAction?.targetTitle,
-      },
-    },
-  ];
-
-  targets.forEach((target, index) => {
-    const isActive = target.id === activeTargetId;
-    nodes.push({
-      id: target.id,
-      type: "target",
-      position: { x: 670, y: 30 + index * spacing },
-      data: {
-        ...target,
-        isActive,
-        state: isActive ? state : "idle",
-      },
-    });
-  });
-
-  // Build edges
-  const edges: Edge[] = [
-    {
-      id: "e_identity_agent",
-      source: "identity",
-      target: "agent",
-      style: { stroke: "#94a3b8", strokeWidth: 1.8 },
-      markerEnd: { type: MarkerType.ArrowClosed, color: "#94a3b8", width: 14, height: 14 },
-    },
-  ];
-
-  const edgeTone =
-    state === "pending_approval" || state === "frozen"
-      ? "#f59e0b"
-      : state === "blocked"
-      ? "#ef4444"
-      : state === "allowed" || state === "approved"
-      ? "#10b981"
-      : "#94a3b8";
-
-  targets.forEach((target) => {
-    const isActive = target.id === activeTargetId && state !== "idle";
-    edges.push({
-      id: `e_agent_${target.id}`,
-      source: "agent",
-      target: target.id,
-      animated: isActive,
-      style: {
-        stroke: isActive ? edgeTone : "#cbd5e1",
-        strokeWidth: isActive ? 2.6 : 1.4,
-        ...(isActive ? { strokeDasharray: "6 6" } : {}),
-      },
-      markerEnd: {
-        type: MarkerType.ArrowClosed,
-        color: isActive ? edgeTone : "#cbd5e1",
-        width: 14,
-        height: 14,
-      },
-    });
-  });
-
-  return { nodes, edges };
-}
-
-function NavIcon({ children, active = false }: { children: React.ReactNode; active?: boolean }) {
-  return (
-    <button
-      type="button"
-      className={`grid h-9 w-9 place-items-center rounded-lg transition ${
-        active ? "bg-slate-900 text-white" : "text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-      }`}
-    >
-      {children}
-    </button>
-  );
-}
-
-function ConnectionForm({
-  form,
-  setForm,
-  onSubmit,
-  busy,
-}: {
-  form: FormState;
-  setForm: React.Dispatch<React.SetStateAction<FormState>>;
-  onSubmit: (event: React.FormEvent) => void;
-  busy: boolean;
-}) {
-  const update = (key: keyof FormState, value: string) =>
-    setForm((current) => ({
-      ...current,
-      [key]: value,
-      ...(key === "url" && !current.name.trim() ? { name: nameFromUrl(value) } : {}),
-    }));
-
-  return (
-    <form onSubmit={onSubmit} className="space-y-3 p-5">
-      <div className="grid gap-3 sm:grid-cols-[1fr_170px]">
-        <label className="field-label">
-          Connection name <span className="font-normal normal-case tracking-normal text-slate-400">optional for HTTP</span>
-          <input
-            required={form.transport === "stdio"}
-            value={form.name}
-            onChange={(event) => update("name", event.target.value)}
-            placeholder="e.g. Linear MCP"
-            className="field-input"
-          />
-        </label>
-        <label className="field-label">
-          Transport
-          <select value={form.transport} onChange={(event) => update("transport", event.target.value as Transport)} className="field-input">
-            <option value="streamable-http">Streamable HTTP</option>
-            <option value="sse">SSE</option>
-            <option value="stdio">stdio</option>
-          </select>
-        </label>
-      </div>
-      {form.transport === "stdio" ? (
-        <div className="grid gap-3 sm:grid-cols-2">
-          <label className="field-label">
-            Command
-            <input required value={form.command} onChange={(event) => update("command", event.target.value)} placeholder="npx" className="field-input font-mono" />
-          </label>
-          <label className="field-label">
-            Working directory
-            <input value={form.cwd} onChange={(event) => update("cwd", event.target.value)} placeholder="/workspace" className="field-input font-mono" />
-          </label>
-          <label className="field-label sm:col-span-2">
-            Arguments <span className="font-normal normal-case tracking-normal text-slate-400">(one per line)</span>
-            <textarea
-              value={form.args}
-              onChange={(event) => update("args", event.target.value)}
-              placeholder="-y\n@modelcontextprotocol/server-github"
-              className="field-input min-h-[70px] font-mono"
-            />
-          </label>
-        </div>
-      ) : (
-        <label className="field-label">
-          Server URL
-          <input required type="url" value={form.url} onChange={(event) => update("url", event.target.value)} placeholder="https://mcp.example.com/mcp" className="field-input font-mono" />
-        </label>
-      )}
-      <label className="field-label">
-        Environment <span className="font-normal normal-case tracking-normal text-slate-400">KEY=VALUE per line</span>
-        <textarea value={form.env} onChange={(event) => update("env", event.target.value)} placeholder="GITHUB_OWNER=acme" className="field-input min-h-[76px] font-mono" />
-      </label>
-      <details className="advanced-auth rounded-xl border border-slate-200 bg-slate-50/70">
-        <summary className="cursor-pointer list-none px-3 py-2.5 text-[10px] font-extrabold uppercase tracking-[.08em] text-slate-500">Advanced: manual auth headers</summary>
-        <div className="border-t border-slate-200 px-3 pb-3 pt-2">
-          <p className="mb-2 text-[10px] leading-4 text-slate-500">OAuth is the recommended way to sign in. Use headers only for servers that do not support OAuth.</p>
-          <textarea aria-label="Manual auth headers" value={form.auth} onChange={(event) => update("auth", event.target.value)} placeholder="Authorization=Bearer …" className="field-input min-h-[76px] font-mono" />
-        </div>
-      </details>
-      <div className="flex items-center justify-between gap-3 border-t border-slate-100 pt-3">
-        <p className="flex items-center gap-1.5 text-[10px] text-slate-500">
-          <LockKeyhole size={12} className="text-emerald-600" />Credentials are never returned to the browser.
-        </p>
-        <button type="submit" disabled={busy} className="button-primary">
-          <Plus size={14} />
-          {busy ? "Connecting…" : form.transport === "stdio" ? "Register connection" : "Register & connect"}
-        </button>
-      </div>
-    </form>
-  );
-}
-
-async function standaloneOAuthConnect(connectionId: string, onStatus: (status: OAuthStatus) => void): Promise<void> {
-  const popup = window.open("about:blank", "mcp-oauth", "popup,width=520,height=720");
-  try {
-    const response = await fetch(`/api/v1/connections/${connectionId}/oauth/start`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
-    const body = (await response.json()) as { authorizationUrl?: string; status?: OAuthStatus; error?: { message?: string } };
-    if (!response.ok || !body.authorizationUrl) throw new Error(body.error?.message || "Unable to start OAuth sign-in.");
-    if (body.status) onStatus(body.status);
-    if (popup && !popup.closed) popup.location.href = body.authorizationUrl;
-    else {
-      window.location.assign(body.authorizationUrl);
-      return;
-    }
-    for (let attempt = 0; attempt < 120; attempt += 1) {
-      await new Promise((resolve) => window.setTimeout(resolve, 1500));
-      const statusResponse = await fetch(`/api/v1/connections/${connectionId}/oauth/status`, { cache: "no-store" });
-      const statusBody = (await statusResponse.json()) as { status?: OAuthStatus };
-      if (!statusResponse.ok || !statusBody.status) continue;
-      onStatus(statusBody.status);
-      if (statusBody.status.authorized) {
-        await fetch("/api/v1/connections", { cache: "no-store" });
-        await fetch(`/api/v1/connections/${connectionId}/test`, { method: "POST" });
-        await fetch(`/api/v1/connections/${connectionId}/discover`, { method: "POST" });
-        return;
-      }
-    }
-  } catch (error) {
-    onStatus({ supported: false, error: error instanceof Error ? error.message : "OAuth sign-in failed." });
-  } finally {
-    if (popup && !popup.closed) popup.close();
-  }
-}
-
-function ConnectionsPanel({
-  connections,
-  selected,
-  oauthStatuses: parentOAuthStatuses = {},
-  onSelect,
-  onConnect: parentOnConnect,
-  onTest,
-  onDiscover,
-  onDelete,
-  busy,
-}: {
-  connections: Connection[];
-  selected: Connection | null;
-  oauthStatuses?: Record<string, OAuthStatus>;
-  onSelect: (connection: Connection) => void;
-  onConnect?: () => void;
-  onTest: () => void;
-  onDiscover: () => void;
-  onDelete: () => void;
-  busy: string | null;
-}) {
-  const [localOAuthStatuses, setLocalOAuthStatuses] = useState<Record<string, OAuthStatus>>({});
-  const oauthStatuses = { ...localOAuthStatuses, ...parentOAuthStatuses };
-  const onConnect =
-    parentOnConnect ||
-    (() => {
-      if (selected) void standaloneOAuthConnect(selected.id, (status) => setLocalOAuthStatuses((current) => ({ ...current, [selected.id]: status })));
-    });
-  const selectedOAuth = selected ? oauthDisplay(selected, oauthStatuses[selected.id]) : null;
-
-  useEffect(() => {
-    let cancelled = false;
-    void Promise.all(
-      connections
-        .filter((connection) => connection.transport !== "stdio")
-        .map(async (connection) => {
-          try {
-            const response = await fetch(`/api/v1/connections/${connection.id}/oauth/status`, { cache: "no-store" });
-            const body = (await response.json()) as { status?: OAuthStatus };
-            if (!cancelled && response.ok && body.status) setLocalOAuthStatuses((current) => ({ ...current, [connection.id]: body.status as OAuthStatus }));
-          } catch {
-            /* status remains not connected */
-          }
-        })
-    );
-    return () => {
-      cancelled = true;
-    };
-  }, [connections]);
-
-  return (
-    <Panel className="overflow-hidden">
-      <SectionHeading
-        icon={<Link2 size={15} />}
-        eyebrow="MCP registry"
-        title="Registered connections"
-        action={<span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-500">{connections.length} total</span>}
-      />
-      <div className="divide-y divide-slate-100">
-        {connections.map((connection) => {
-          const oauth = oauthDisplay(connection, oauthStatuses[connection.id]);
-          return (
-            <button
-              type="button"
-              key={connection.id}
-              onClick={() => onSelect(connection)}
-              className={`flex w-full items-center gap-3 px-5 py-4 text-left transition hover:bg-slate-50 ${selected?.id === connection.id ? "bg-blue-50/50" : ""}`}
-            >
-              <div className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg ${connection.transport === "stdio" ? "bg-violet-50 text-violet-600" : "bg-cyan-50 text-cyan-600"}`}>
-                {connection.transport === "stdio" ? <Terminal size={16} /> : <Server size={16} />}
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-[12px] font-bold text-slate-800">{connection.name}</p>
-                <p className="mt-1 truncate font-mono text-[10px] text-slate-400">
-                  {connection.transport === "stdio" ? [connection.command, ...(connection.args || [])].join(" ") : connection.url}
-                </p>
-              </div>
-              <div className="hidden items-center gap-2 sm:flex">
-                {connection.hasSecrets && <KeyRound size={13} className="text-emerald-600" />}
-                <StatusPill tone={oauth.tone} dot>
-                  {oauth.label}
-                </StatusPill>
-              </div>
-              <ChevronRight size={15} className="text-slate-300" />
-            </button>
-          );
-        })}
-        {connections.length === 0 && (
-          <div className="p-8 text-center">
-            <div className="mx-auto grid h-10 w-10 place-items-center rounded-xl bg-slate-100 text-slate-400">
-              <Link2 size={18} />
-            </div>
-            <p className="mt-3 text-xs font-bold text-slate-700">No MCP connections yet</p>
-            <p className="mt-1 text-[10px] text-slate-500">Register a server to discover its tools.</p>
-          </div>
-        )}
-      </div>
-      {selected && selectedOAuth && (
-        <div className="border-t border-slate-200 bg-slate-50/70 p-4">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400">Selected connection</p>
-              <p className="mt-1 text-sm font-bold text-slate-900">{selected.name}</p>
-            </div>
-            <button type="button" onClick={onDelete} disabled={busy === "delete"} className="button-danger">
-              <Trash2 size={13} />
-              Delete
-            </button>
-          </div>
-          <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-[10px] font-extrabold uppercase tracking-[.08em] text-slate-400">OAuth account</span>
-              <StatusPill tone={selectedOAuth.tone} dot>
-                {selectedOAuth.label}
-              </StatusPill>
-            </div>
-            <p className="mt-2 text-[10px] leading-4 text-slate-500">{selectedOAuth.detail}</p>
-            {selected.transport !== "stdio" && (
-              <button type="button" onClick={onConnect} disabled={Boolean(busy)} className="button-primary mt-3 w-full justify-center">
-                <Link2 size={13} />
-                {busy === "oauth" ? "Waiting for sign-in…" : selectedOAuth.label === "connected" ? "Reconnect account" : "Connect account"}
-              </button>
-            )}
-          </div>
-          <div className="mt-3 flex flex-wrap gap-2">
-            <button type="button" onClick={onTest} disabled={Boolean(busy)} className="button-secondary">
-              <Zap size={13} />
-              {busy === "test" ? "Testing…" : "Test connection"}
-            </button>
-            <button type="button" onClick={onDiscover} disabled={Boolean(busy)} className="button-secondary">
-              <RefreshCw size={13} />
-              {busy === "discover" ? "Discovering…" : "Discover tools"}
-            </button>
-          </div>
-        </div>
-      )}
-    </Panel>
-  );
-}
-
-function ClientConfigPanel({
-  connection,
-  config,
-  onLoad,
-  onCopy,
-}: {
-  connection: Connection | null;
-  config: ClientConfig | null;
-  onLoad: () => void;
-  onCopy: (text: string) => void;
-}) {
-  if (!connection)
-    return (
-      <Panel className="flex min-h-[250px] items-center justify-center p-8 text-center">
-        <div>
-          <div className="mx-auto grid h-10 w-10 place-items-center rounded-xl bg-slate-100 text-slate-400">
-            <Code2 size={18} />
-          </div>
-          <p className="mt-3 text-xs font-bold text-slate-700">Client configuration</p>
-          <p className="mt-1 text-[10px] text-slate-500">Select a connection to generate secure proxy snippets.</p>
-        </div>
-      </Panel>
-    );
-
-  const url = config?.mcp.url || "";
-  const headers = config?.mcp.headers || {};
-  const headerArgs = Object.entries(headers)
-    .map(([key, value]) => ` --header '${key}: ${value}'`)
-    .join("");
-
-  const snippets = config
-    ? [
-        {
-          name: "Antigravity (.mcp.json)",
-          text: JSON.stringify(
-            {
-              mcpServers: {
-                [connection.name]: {
-                  url,
-                  ...(Object.keys(headers).length ? { headers } : {}),
-                },
-              },
-            },
-            null,
-            2
-          ),
-        },
-        {
-          name: "Claude Code CLI",
-          text: `claude mcp add --transport http${headerArgs} ${connection.name} ${url}`,
-        },
-        {
-          name: "Cursor",
-          text: JSON.stringify(config.cursor, null, 2),
-        },
-        {
-          name: "Codex CLI",
-          text: `codex mcp add ${connection.name} --url ${url}${Object.entries(headers)
-            .map(([key, value]) => ` --header ${key}=${value}`)
-            .join("")}`,
-        },
-      ]
-    : [];
-
-  return (
-    <Panel className="overflow-hidden">
-      <SectionHeading
-        icon={<Code2 size={15} />}
-        eyebrow="Client access"
-        title="Generated configuration"
-        action={
-          <button type="button" onClick={onLoad} className="icon-button" title="Refresh configuration">
-            <RefreshCw size={14} />
-          </button>
-        }
-      />
-      {!config ? (
-        <div className="p-6">
-          <button type="button" onClick={onLoad} className="button-primary">
-            <Code2 size={14} />
-            Generate snippets
-          </button>
-          <p className="mt-3 text-[10px] text-slate-500">Proxy credentials stay in Aegis; clients receive only the gateway URL.</p>
-        </div>
-      ) : (
-        <div className="space-y-3 p-5">
-          {snippets.map((snippet) => (
-            <div key={snippet.name} className="rounded-xl border border-slate-200 bg-slate-950 p-3">
-              <div className="mb-2 flex items-center justify-between">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-300">{snippet.name}</span>
-                <button
-                  type="button"
-                  onClick={() => onCopy(snippet.text)}
-                  className="rounded-md p-1 text-slate-400 hover:bg-white/10 hover:text-white"
-                  title="Copy snippet"
-                >
-                  <Copy size={13} />
-                </button>
-              </div>
-              <pre className="max-h-28 overflow-auto whitespace-pre-wrap break-all text-[10px] leading-5 text-cyan-200">
-                {snippet.text}
-              </pre>
-            </div>
-          ))}
-          <p className="text-[10px] text-slate-500">{config.note || "The gateway enforces policy before forwarding tool calls."}</p>
-        </div>
-      )}
-    </Panel>
-  );
-}
-
-function ToolsPanel({ tools, discovery, onDiscover }: { tools: Tool[]; discovery: Discovery | null; onDiscover: () => void }) {
-  return (
-    <Panel className="overflow-hidden">
-      <SectionHeading
-        icon={<Zap size={15} />}
-        eyebrow="MCP capability"
-        title="Discovered tools"
-        action={
-          <button type="button" onClick={onDiscover} className="button-quiet">
-            <RefreshCw size={12} />
-            Refresh
-          </button>
-        }
-      />
-      {discovery?.serverInfo && (
-        <div className="border-b border-slate-100 bg-emerald-50/60 px-5 py-3 text-[10px] text-emerald-800">
-          <span className="font-bold">{discovery.serverInfo.name || "MCP server"}</span>
-          {discovery.serverInfo.version && ` · v${discovery.serverInfo.version}`}
-        </div>
-      )}
-      <div className="max-h-[275px] overflow-y-auto">
-        {tools.map((tool) => (
-          <div key={tool.name} className="border-b border-slate-100 px-5 py-3 last:border-0">
-            <p className="font-mono text-[11px] font-bold text-slate-800">{tool.name}</p>
-            <p className="mt-1 line-clamp-2 text-[10px] leading-4 text-slate-500">{tool.description || "No description provided by server."}</p>
-          </div>
-        ))}
-        {tools.length === 0 && <div className="p-7 text-center text-[10px] text-slate-500">Run discovery to load this server&apos;s tools.</div>}
-      </div>
-    </Panel>
-  );
-}
-
-function OperationsPanels({
-  actions,
-  audit,
-  selectedId,
-  setSelectedId,
-  onRefresh,
-}: {
-  actions: Action[];
-  audit: AuditEvent[];
-  selectedId: string;
-  setSelectedId: (id: string) => void;
-  onRefresh: () => void;
-}) {
-  const pending = actions.filter((action) => action.state === "pending_approval" || action.state === "frozen");
-
-  return (
-    <div className="grid gap-4 xl:grid-cols-[1.1fr_1fr_1fr]">
-      <Panel className="overflow-hidden">
-        <SectionHeading
-          icon={<Bot size={15} />}
-          eyebrow="Live gateway stream"
-          title="Agent activity"
-          action={
-            <button type="button" onClick={onRefresh} className="icon-button">
-              <RefreshCw size={14} />
-            </button>
-          }
-        />
-        <div className="max-h-[280px] overflow-y-auto">
-          {actions.slice(0, 8).map((action) => (
-            <button
-              type="button"
-              key={action.id}
-              onClick={() => setSelectedId(action.id)}
-              className={`flex w-full items-center gap-3 border-b border-slate-100 px-5 py-3 text-left last:border-0 hover:bg-slate-50 ${
-                action.id === selectedId ? "bg-blue-50/50" : ""
-              }`}
-            >
-              <div
-                className={`grid h-7 w-7 shrink-0 place-items-center rounded-md ${
-                  action.state === "blocked"
-                    ? "bg-red-50 text-red-600"
-                    : action.state === "allowed" || action.state === "approved"
-                    ? "bg-emerald-50 text-emerald-600"
-                    : "bg-amber-50 text-amber-600"
-                }`}
-              >
-                {action.state === "blocked" ? <X size={13} /> : action.state === "allowed" || action.state === "approved" ? <Check size={13} /> : <Activity size={13} />}
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-[10px] font-bold text-slate-800">{action.tool}</p>
-                <p className="mt-0.5 truncate text-[9px] text-slate-400">
-                  {normalizeActorName(action.actorId)} · {action.targetTitle} · {action.timestamp}
-                </p>
-              </div>
-              <StatusPill tone={toneForState(action.state)}>{action.state.replace("_", " ")}</StatusPill>
-            </button>
-          ))}
-          {actions.length === 0 && <p className="p-7 text-center text-[10px] text-slate-500">Waiting for agent traffic.</p>}
-        </div>
-      </Panel>
-
-      <Panel className="overflow-hidden">
-        <SectionHeading
-          icon={<AlertTriangle size={15} />}
-          eyebrow="Human in the loop"
-          title="Approval queue"
-          action={
-            <StatusPill tone={pending.length ? "amber" : "green"} dot>
-              {pending.length} pending
-            </StatusPill>
-          }
-        />
-        <div className="max-h-[280px] overflow-y-auto">
-          {pending.map((action) => (
-            <button
-              type="button"
-              key={action.id}
-              onClick={() => setSelectedId(action.id)}
-              className="flex w-full items-center gap-3 border-b border-slate-100 px-5 py-3 text-left hover:bg-amber-50/40"
-            >
-              <div className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-amber-50 text-amber-600">
-                <Pause size={13} />
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-[10px] font-bold text-slate-800">{action.tool}</p>
-                <p className="mt-0.5 truncate text-[9px] text-slate-400">
-                  Risk {action.score}/100 · {action.summary}
-                </p>
-              </div>
-              <ChevronRight size={13} className="text-slate-300" />
-            </button>
-          ))}
-          {pending.length === 0 && <p className="p-7 text-center text-[10px] text-slate-500">No approvals waiting.</p>}
-        </div>
-      </Panel>
-
-      <Panel className="overflow-hidden">
-        <SectionHeading icon={<FileKey2 size={15} />} eyebrow="Immutable trail" title="Audit events" />
-        <div className="max-h-[280px] overflow-y-auto">
-          {audit.slice(0, 8).map((event) => (
-            <div key={event.id} className="border-b border-slate-100 px-5 py-3 last:border-0">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-[10px] font-bold text-slate-700">{event.type.replace("action.", "")}</span>
-                <span className="text-[9px] text-slate-400">{new Date(event.timestamp).toLocaleTimeString()}</span>
-              </div>
-              <p className="mt-1 truncate font-mono text-[9px] text-slate-400">
-                {event.actionId} · {normalizeActorName(event.actorId)}
-              </p>
-              <p className="mt-1 line-clamp-1 text-[9px] text-slate-500">{event.reason || `Transitioned to ${event.toStatus}`}</p>
-            </div>
-          ))}
-          {audit.length === 0 && <p className="p-7 text-center text-[10px] text-slate-500">Audit events will appear as the gateway processes calls.</p>}
-        </div>
-      </Panel>
     </div>
   );
 }
 
 const nodeTypes = {
-  identity: IdentityNode,
-  agent: AgentNode,
-  target: TargetNode,
+  identity: IdentityFlowNode,
+  agent: AgentFlowNode,
+  target: TargetFlowNode,
 };
 
+// --- Main Application Component ---
+
 export default function Home() {
-  const [view, setView] = useState<View>("topology");
+  const [tab, setTab] = useState<ActiveTab>("topology");
   const [connections, setConnections] = useState<Connection[]>([]);
   const connectionsRef = useRef<Connection[]>([]);
   connectionsRef.current = connections;
-  const [oauthStatuses, setOauthStatuses] = useState<Record<string, OAuthStatus>>({});
-  const [selectedConnectionId, setSelectedConnectionId] = useState("");
-  const [form, setForm] = useState<FormState>(emptyForm);
-  const [formBusy, setFormBusy] = useState(false);
-  const [connectionBusy, setConnectionBusy] = useState<string | null>(null);
-  const [discovery, setDiscovery] = useState<Discovery | null>(null);
-  const [config, setConfig] = useState<ClientConfig | null>(null);
+
   const [actions, setActions] = useState<Action[]>([]);
   const [audit, setAudit] = useState<AuditEvent[]>([]);
-  const [selectedId, setSelectedId] = useState("");
-  const [connected, setConnected] = useState(false);
-  const [identity, setIdentity] = useState<IdentityData>({ name: "Loading host identity…", email: "connecting" });
+  const [selectedId, setSelectedId] = useState<string>("");
+  const [connected, setConnected] = useState<boolean>(false);
+  const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
+
+  // Filtering & search
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filterState, setFilterState] = useState<string>("all");
+
+  // Host identity & DB counts
+  const [identity, setIdentity] = useState<IdentityData>({ name: "Host Developer", email: "local@workspace" });
   const [summary, setSummary] = useState<DbSummary>({
     customers: 100,
     billing: 250,
     bucketCount: 4,
     gitBranch: "main",
   });
-  const [toast, setToast] = useState<string | null>(null);
 
-  useEffect(() => {
-    const handleUnhandledError = (event: ErrorEvent) => {
-      if (!event.error && (event.message === "[object Event]" || event.type === "error")) {
-        event.preventDefault();
-      }
-    };
-    const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
-      if (!event.reason || event.reason === "[object Event]") {
-        event.preventDefault();
-      }
-    };
-    window.addEventListener("error", handleUnhandledError);
-    window.addEventListener("unhandledrejection", handleUnhandledRejection);
-    return () => {
-      window.removeEventListener("error", handleUnhandledError);
-      window.removeEventListener("unhandledrejection", handleUnhandledRejection);
-    };
+  // Connection management
+  const [selectedConnectionId, setSelectedConnectionId] = useState<string>("");
+  const [form, setForm] = useState<FormState>(emptyForm);
+  const [formBusy, setFormBusy] = useState(false);
+  const [connectionBusy, setConnectionBusy] = useState<string | null>(null);
+  const [discovery, setDiscovery] = useState<Discovery | null>(null);
+  const [config, setConfig] = useState<ClientConfig | null>(null);
+  const [oauthStatuses, setOauthStatuses] = useState<Record<string, OAuthStatus>>({});
+
+  // Toast notification
+  const [toast, setToast] = useState<{ message: string; type?: "info" | "success" | "error" } | null>(null);
+
+  const showToast = useCallback((message: string, type: "info" | "success" | "error" = "info") => {
+    setToast({ message, type });
+    window.setTimeout(() => setToast(null), 3000);
   }, []);
 
-  const selectedConnection = connections.find((connection) => connection.id === selectedConnectionId) || null;
-  const selectedAction =
-    actions.find((action) => action.id === selectedId) ||
-    actions[0] || {
-      id: "",
-      actorId: "antigravity",
-      tool: "No live action",
-      target: "target_cloudflare_d1",
-      targetTitle: "Cloudflare D1 (Cloud)",
-      resource: "Waiting for agent traffic",
-      summary: "Connect an agent or MCP client to inspect live traffic.",
-      state: "idle" as GatewayState,
-      score: 0,
-      timestamp: "—",
-    };
+  // Selected Action
+  const selectedAction = useMemo(() => {
+    return actions.find((a) => a.id === selectedId) || actions[0] || null;
+  }, [actions, selectedId]);
 
-  const activeAgentName = useMemo(() => {
-    return normalizeActorName(selectedAction?.actorId || actions[0]?.actorId || "antigravity");
-  }, [selectedAction, actions]);
+  // Selected Connection
+  const selectedConnection = useMemo(() => {
+    return connections.find((c) => c.id === selectedConnectionId) || connections[0] || null;
+  }, [connections, selectedConnectionId]);
 
-  const { nodes, edges } = useMemo(
-    () => buildTopology(selectedAction.state, identity, connections, summary, selectedAction, activeAgentName),
-    [selectedAction, identity, connections, summary, activeAgentName]
-  );
+  // Pending Actions
+  const pendingActions = useMemo(() => {
+    return actions.filter((a) => a.state === "pending_approval" || a.state === "frozen");
+  }, [actions]);
 
-  const tools = discovery?.tools || [];
+  // Filtered Actions for Activity Tab
+  const filteredActions = useMemo(() => {
+    return actions.filter((action) => {
+      const matchesSearch =
+        searchQuery === "" ||
+        action.tool.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        action.summary.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        action.targetTitle.toLowerCase().includes(searchQuery.toLowerCase());
 
-  const notify = useCallback((message: string) => {
-    setToast(message);
-    window.setTimeout(() => setToast(null), 2600);
+      const matchesFilter =
+        filterState === "all" ||
+        (filterState === "pending" && (action.state === "pending_approval" || action.state === "frozen")) ||
+        (filterState === "blocked" && action.state === "blocked") ||
+        (filterState === "allowed" && (action.state === "allowed" || action.state === "approved"));
+
+      return matchesSearch && matchesFilter;
+    });
+  }, [actions, searchQuery, filterState]);
+
+  // --- API Functions ---
+
+  const refreshOperations = useCallback(async (currentConns?: Connection[]) => {
+    const connsToUse = currentConns || connectionsRef.current;
+    try {
+      const [actionsRes, auditRes] = await Promise.all([
+        fetch("/api/v1/actions?limit=25", { cache: "no-store" }),
+        fetch("/api/v1/audit?limit=25", { cache: "no-store" }),
+      ]);
+
+      if (actionsRes.ok) {
+        const body = (await actionsRes.json()) as { actions?: Record<string, unknown>[] };
+        if (body.actions) {
+          const parsed = body.actions.map((raw) => apiAction(raw, connsToUse));
+          setActions(parsed);
+          setSelectedId((curr) => (curr && parsed.some((p) => p.id === curr) ? curr : parsed[0]?.id || ""));
+        }
+      }
+
+      if (auditRes.ok) {
+        const body = (await auditRes.json()) as { audit?: AuditEvent[] };
+        if (body.audit) setAudit(body.audit);
+      }
+    } catch {
+      /* ignore fetch errors during background polling */
+    }
   }, []);
 
   const refreshSummary = useCallback(async () => {
     try {
-      const response = await fetch("/api/v1/explorer/summary", { cache: "no-store" });
-      const body = (await response.json()) as {
-        databases?: { customers?: number; billing?: number };
-        bucket?: { objects?: unknown[] };
-        repo?: { branch?: string };
-      };
-      if (body.databases) {
-        setSummary({
-          customers: body.databases.customers || 100,
-          billing: body.databases.billing || 250,
-          bucketCount: body.bucket?.objects?.length || 4,
-          gitBranch: body.repo?.branch || "main",
-        });
-      }
-    } catch {
-      // ignore
-    }
-  }, []);
+      const [cusRes, billRes] = await Promise.all([
+        fetch("/api/v1/explorer/customers?limit=1", { cache: "no-store" }),
+        fetch("/api/v1/explorer/billing?limit=1", { cache: "no-store" }),
+      ]);
 
-  const refreshOperations = useCallback(
-    async (currentConns?: Connection[]) => {
-      try {
-        const conns = currentConns || connectionsRef.current;
-        const [actionResponse, auditResponse] = await Promise.all([
-          fetch("/api/v1/actions?limit=50", { cache: "no-store" }),
-          fetch("/api/v1/audit?limit=50", { cache: "no-store" }),
-        ]);
-        const actionBody = (await actionResponse.json()) as { actions?: Record<string, unknown>[] };
-        const auditBody = (await auditResponse.json()) as { events?: AuditEvent[] };
-        const live = (actionBody.actions || []).map((raw) => apiAction(raw, conns));
-        setActions(live);
-        setAudit(auditBody.events || []);
-        if (live[0]) setSelectedId((current) => current || live[0].id);
-      } catch {
-        setConnected(false);
-      }
-    },
-    []
-  );
+      let customers = 100;
+      let billing = 250;
 
-  const loadOAuthStatus = useCallback(async (connectionId: string): Promise<OAuthStatus | null> => {
-    try {
-      const response = await fetch(`/api/v1/connections/${connectionId}/oauth/status`, { cache: "no-store" });
-      const body = (await response.json()) as { status?: OAuthStatus; error?: { message?: string } };
-      if (!response.ok || !body.status) throw new Error(body.error?.message || "Unable to load OAuth status.");
-      setOauthStatuses((current) => ({ ...current, [connectionId]: body.status as OAuthStatus }));
-      return body.status;
+      if (cusRes.ok) {
+        const body = (await cusRes.json()) as { total?: number };
+        if (typeof body.total === "number") customers = body.total;
+      }
+      if (billRes.ok) {
+        const body = (await billRes.json()) as { total?: number };
+        if (typeof body.total === "number") billing = body.total;
+      }
+
+      setSummary((curr) => ({ ...curr, customers, billing }));
     } catch {
-      return null;
+      /* ignore */
     }
   }, []);
 
   const refreshConnections = useCallback(async () => {
-    const response = await fetch("/api/v1/connections", { cache: "no-store" });
-    const body = (await response.json()) as { connections?: Connection[]; error?: { message?: string } };
-    if (!response.ok) throw new Error(body.error?.message || "Unable to load MCP connections.");
-    const next = body.connections || [];
-    setConnections(next);
-    await Promise.all(next.filter((connection) => connection.transport !== "stdio").map((connection) => loadOAuthStatus(connection.id)));
-    return next;
-  }, [loadOAuthStatus]);
+    try {
+      const res = await fetch("/api/v1/connections", { cache: "no-store" });
+      if (!res.ok) return [];
+      const body = (await res.json()) as { connections?: Connection[] };
+      const next = body.connections || [];
+      setConnections(next);
+      return next;
+    } catch {
+      return [];
+    }
+  }, []);
 
-  // 1. Dedicated SSE connection lifecycle (single persistent connection, cancels safely)
+  const handleManualRefresh = async () => {
+    setIsRefreshing(true);
+    await Promise.all([refreshOperations(), refreshSummary(), refreshConnections()]);
+    setIsRefreshing(false);
+    showToast("Dashboard data updated", "success");
+  };
+
+  // Dedicated SSE Connection Lifecycle
   useEffect(() => {
     let source: EventSource | null = null;
     let isCancelled = false;
@@ -1304,23 +561,25 @@ export default function Home() {
     };
   }, [refreshOperations, refreshSummary]);
 
-  // 2. Initial data bootstrap and background refresh interval
+  // Initial Bootstrap & Polling
   useEffect(() => {
     let isCancelled = false;
 
     const bootstrap = async () => {
-      try {
-        const conns = await refreshConnections();
-        if (isCancelled) return;
-        await Promise.all([refreshOperations(conns), refreshSummary()]);
+      const conns = await refreshConnections();
+      if (isCancelled) return;
+      await Promise.all([refreshOperations(conns), refreshSummary()]);
 
-        const hostResponse = await fetch("/api/v1/explorer/host", { cache: "no-store" });
-        const hostBody = (await hostResponse.json()) as { telemetry?: { username?: string; gitEmail?: string; hostname?: string } };
-        if (!isCancelled && hostBody.telemetry) {
-          setIdentity({
-            name: hostBody.telemetry.username || "Unknown host user",
-            email: hostBody.telemetry.gitEmail || `${hostBody.telemetry.hostname || "local"}@local`,
-          });
+      try {
+        const hostRes = await fetch("/api/v1/explorer/host", { cache: "no-store" });
+        if (hostRes.ok) {
+          const hostBody = (await hostRes.json()) as { telemetry?: { username?: string; gitEmail?: string; hostname?: string } };
+          if (!isCancelled && hostBody.telemetry) {
+            setIdentity({
+              name: hostBody.telemetry.username || "Host User",
+              email: hostBody.telemetry.gitEmail || `${hostBody.telemetry.hostname || "local"}@machine`,
+            });
+          }
         }
       } catch {
         /* ignore */
@@ -1340,452 +599,944 @@ export default function Home() {
     };
   }, [refreshConnections, refreshOperations, refreshSummary]);
 
-  const finishOAuthSetup = useCallback(
-    async (connectionId: string) => {
-      await refreshConnections();
-      let testMessage = "";
-      try {
-        const testResponse = await fetch(`/api/v1/connections/${connectionId}/test`, { method: "POST" });
-        const testBody = (await testResponse.json()) as { result?: { serverInfo?: { name?: string } }; error?: { message?: string } };
-        if (!testResponse.ok) throw new Error(testBody.error?.message || "Connection test failed.");
-        testMessage = `Connection healthy${testBody.result?.serverInfo?.name ? ` · ${testBody.result.serverInfo.name}` : ""}`;
-      } catch (error) {
-        testMessage = error instanceof Error ? error.message : "Connection test failed";
+  // Action Mutate (Approve, Block, Freeze)
+  const mutateAction = async (actionId: string, status: "approved" | "blocked" | "frozen") => {
+    try {
+      const res = await fetch(`/api/v1/actions/${encodeURIComponent(actionId)}/resolve`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ status, actorId: "operator", note: `Action ${status} by operator` }),
+      });
+      const body = (await res.json()) as { action?: Record<string, unknown>; error?: { message?: string } };
+      if (!res.ok || !body.action) {
+        showToast(body.error?.message || "Failed to resolve action", "error");
+        return;
       }
-      try {
-        const discoverResponse = await fetch(`/api/v1/connections/${connectionId}/discover`, { method: "POST" });
-        const discoverBody = (await discoverResponse.json()) as { discovery?: Discovery; error?: { message?: string } };
-        if (!discoverResponse.ok || !discoverBody.discovery) throw new Error(discoverBody.error?.message || "Discovery failed.");
-        setDiscovery(discoverBody.discovery);
-        notify(`${testMessage}; ${discoverBody.discovery.tools?.length || 0} tools discovered`);
-      } catch (error) {
-        notify(`${testMessage}; ${error instanceof Error ? error.message : "Discovery failed"}`);
-      }
-    },
-    [notify, refreshConnections]
-  );
+      setActions((curr) => curr.map((a) => (a.id === actionId ? apiAction(body.action as Record<string, unknown>, connections) : a)));
+      await refreshOperations();
+      showToast(`Action ${status}`, status === "approved" ? "success" : "info");
+    } catch {
+      showToast("Network request failed", "error");
+    }
+  };
 
-  const startOAuth = useCallback(
-    async (connectionId: string) => {
-      setConnectionBusy("oauth");
-      const popup = window.open("about:blank", "mcp-oauth", "popup,width=520,height=720");
-      try {
-        const response = await fetch(`/api/v1/connections/${connectionId}/oauth/start`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
-        const body = (await response.json()) as { authorizationUrl?: string; status?: OAuthStatus; error?: { message?: string } };
-        if (!response.ok || !body.authorizationUrl) throw new Error(body.error?.message || "Unable to start OAuth sign-in.");
-        if (body.status) setOauthStatuses((current) => ({ ...current, [connectionId]: body.status as OAuthStatus }));
-        if (popup && !popup.closed) popup.location.href = body.authorizationUrl;
-        else {
-          notify("Your browser blocked the sign-in window. Continuing in this tab…");
-          window.location.assign(body.authorizationUrl);
-          return;
-        }
-        notify("Waiting for sign-in in the browser…");
-        let latest: OAuthStatus | null = body.status || null;
-        for (let attempt = 0; attempt < 120; attempt += 1) {
-          await new Promise((resolve) => window.setTimeout(resolve, 1500));
-          latest = await loadOAuthStatus(connectionId);
-          if (latest?.authorized) {
-            await finishOAuthSetup(connectionId);
-            return;
-          }
-          if (latest?.error || (latest?.supported === false && !latest.pending)) throw new Error(latest.error || "OAuth is unavailable for this MCP server.");
-        }
-        notify("Sign-in is still waiting. Return to this connection to check again.");
-      } catch (error) {
-        if (popup && !popup.closed) popup.close();
-        notify(error instanceof Error ? error.message : "OAuth sign-in failed");
-      } finally {
-        setConnectionBusy(null);
-      }
-    },
-    [finishOAuthSetup, loadOAuthStatus, notify]
-  );
-
-  const registerConnection = async (event: React.FormEvent) => {
-    event.preventDefault();
+  // Connection Registration
+  const registerConnection = async (e: React.FormEvent) => {
+    e.preventDefault();
     setFormBusy(true);
     try {
       const payload: Record<string, unknown> = {
-        name: form.name.trim(),
+        name: form.name.trim() || "MCP Server",
         transport: form.transport,
-        ...(form.transport === "stdio"
-          ? {
-              command: form.command.trim(),
-              args: form.args
-                .split(/\r?\n/)
-                .map((arg) => arg.trim())
-                .filter(Boolean),
-              cwd: form.cwd.trim() || undefined,
-            }
-          : { url: form.url.trim() }),
-        env: parseMap(form.env),
-        headers: parseMap(form.auth),
       };
-      const response = await fetch("/api/v1/connections", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
-      const body = (await response.json()) as { connection?: Connection; error?: { message?: string } };
-      if (!response.ok || !body.connection) throw new Error(body.error?.message || "Connection registration failed.");
-      const updatedConns = await refreshConnections();
-      await refreshOperations(updatedConns);
-      setSelectedConnectionId(body.connection.id);
+
+      if (form.transport === "stdio") {
+        payload.command = form.command.trim();
+        payload.args = form.args.split("\n").map((a) => a.trim()).filter(Boolean);
+        if (form.cwd.trim()) payload.cwd = form.cwd.trim();
+      } else {
+        payload.url = form.url.trim();
+      }
+
+      if (form.env.trim()) {
+        const envObj: Record<string, string> = {};
+        form.env.split("\n").forEach((line) => {
+          const [k, ...v] = line.split("=");
+          if (k) envObj[k.trim()] = v.join("=").trim();
+        });
+        payload.env = envObj;
+      }
+
+      const res = await fetch("/api/v1/connections", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const body = (await res.json()) as { connection?: Connection; error?: { message?: string } };
+      if (!res.ok || !body.connection) {
+        showToast(body.error?.message || "Failed to create connection", "error");
+        return;
+      }
+
       setForm(emptyForm);
-      setDiscovery(null);
-      setConfig(null);
-      notify(form.transport === "stdio" ? "MCP connection registered" : "Connection registered — starting sign-in");
-      if (form.transport !== "stdio") await startOAuth(body.connection.id);
-    } catch (error) {
-      notify(error instanceof Error ? error.message : "Connection registration failed");
+      const updated = await refreshConnections();
+      setSelectedConnectionId(body.connection.id);
+      showToast("Server registered successfully", "success");
+    } catch {
+      showToast("Network error while creating connection", "error");
     } finally {
       setFormBusy(false);
     }
   };
 
-  const testConnection = async () => {
-    if (!selectedConnection) return;
-    setConnectionBusy("test");
-    try {
-      const response = await fetch(`/api/v1/connections/${selectedConnection.id}/test`, { method: "POST" });
-      const body = (await response.json()) as { result?: { serverInfo?: { name?: string } }; error?: { message?: string } };
-      if (!response.ok) throw new Error(body.error?.message || "Connection test failed.");
-      notify(`Connection healthy${body.result?.serverInfo?.name ? ` · ${body.result.serverInfo.name}` : ""}`);
-    } catch (error) {
-      notify(error instanceof Error ? error.message : "Connection test failed");
-    } finally {
-      setConnectionBusy(null);
-    }
-  };
-
-  const discoverConnection = async () => {
-    if (!selectedConnection) return;
-    setConnectionBusy("discover");
-    try {
-      const response = await fetch(`/api/v1/connections/${selectedConnection.id}/discover`, { method: "POST" });
-      const body = (await response.json()) as { discovery?: Discovery; error?: { message?: string } };
-      if (!response.ok || !body.discovery) throw new Error(body.error?.message || "Discovery failed.");
-      setDiscovery(body.discovery);
-      notify(`${body.discovery.tools?.length || 0} tools discovered`);
-    } catch (error) {
-      notify(error instanceof Error ? error.message : "Discovery failed");
-    } finally {
-      setConnectionBusy(null);
-    }
-  };
-
-  const deleteConnection = async () => {
-    if (!selectedConnection || !window.confirm(`Delete ${selectedConnection.name}?`)) return;
+  // Delete Connection
+  const deleteConnection = async (id: string) => {
+    if (!confirm("Are you sure you want to remove this connection?")) return;
     setConnectionBusy("delete");
     try {
-      const response = await fetch(`/api/v1/connections/${selectedConnection.id}`, { method: "DELETE" });
-      if (!response.ok) {
-        const body = (await response.json()) as { error?: { message?: string } };
-        throw new Error(body.error?.message || "Delete failed.");
+      const res = await fetch(`/api/v1/connections/${id}`, { method: "DELETE" });
+      if (res.ok) {
+        await refreshConnections();
+        showToast("Connection removed", "info");
       }
-      const updatedConns = await refreshConnections();
-      await refreshOperations(updatedConns);
-      setSelectedConnectionId("");
-      setDiscovery(null);
-      setConfig(null);
-      notify("Connection deleted");
-    } catch (error) {
-      notify(error instanceof Error ? error.message : "Delete failed");
     } finally {
       setConnectionBusy(null);
     }
   };
 
-  const loadConfig = async () => {
-    if (!selectedConnection) return;
-    const response = await fetch(`/api/v1/connections/${selectedConnection.id}/client-config`, { method: "POST", cache: "no-store" });
-    const body = (await response.json()) as { config?: ClientConfig; token?: string; error?: { message?: string } };
-    if (!response.ok || !body.config) {
-      notify(body.error?.message || "Unable to generate configuration");
-      return;
+  // Test Connection
+  const testConnection = async (id: string) => {
+    setConnectionBusy("test");
+    try {
+      const res = await fetch(`/api/v1/connections/${id}/test`, { method: "POST" });
+      const body = (await res.json()) as { ok?: boolean; error?: { message?: string } };
+      if (res.ok) {
+        showToast("Connection test succeeded", "success");
+      } else {
+        showToast(body.error?.message || "Test failed", "error");
+      }
+    } catch {
+      showToast("Connection test failed", "error");
+    } finally {
+      setConnectionBusy(null);
     }
-    setConfig(body.config);
-    if (body.token) setConnections((current) => current.map((item) => (item.id === selectedConnection.id ? { ...item, token: body.token } : item)));
-    notify("Proxy token generated — copy it now");
   };
 
-  const mutateAction = async (status: "approved" | "blocked" | "frozen") => {
-    if (!selectedAction.id) return;
-    const response = await fetch(`/api/v1/actions/${encodeURIComponent(selectedAction.id)}/resolve`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ status, actorId: "dashboard-operator", note: `Action ${status} from control plane` }),
+  // Discover Tools
+  const discoverTools = async (id: string) => {
+    setConnectionBusy("discover");
+    try {
+      const res = await fetch(`/api/v1/connections/${id}/discover`, { method: "POST" });
+      const body = (await res.json()) as { discovery?: Discovery; error?: { message?: string } };
+      if (res.ok && body.discovery) {
+        setDiscovery(body.discovery);
+        showToast(`Discovered ${body.discovery.tools?.length || 0} tools`, "success");
+      } else {
+        showToast(body.error?.message || "Tool discovery failed", "error");
+      }
+    } catch {
+      showToast("Discovery request failed", "error");
+    } finally {
+      setConnectionBusy(null);
+    }
+  };
+
+  // Load Config
+  const loadConfig = async (id: string) => {
+    try {
+      const res = await fetch(`/api/v1/connections/${id}/config`, { method: "POST" });
+      const body = (await res.json()) as { config?: ClientConfig };
+      if (res.ok && body.config) {
+        setConfig(body.config);
+      }
+    } catch {
+      /* ignore */
+    }
+  };
+
+  // --- Topology Node & Edge Builder ---
+
+  const { nodes, edges } = useMemo(() => {
+    const activeTargetId = selectedAction?.target || "target_cloudflare_d1";
+    const currentState = selectedAction?.state || "idle";
+
+    const targets: TargetData[] = [
+      {
+        id: "target_cloudflare_d1",
+        title: "Cloudflare D1",
+        subtitle: "sentinelgate-d1 · APAC",
+        icon: <Database size={14} />,
+        detail: `${summary.customers} customers · ${summary.billing} invoices`,
+      },
+      {
+        id: "target_s3",
+        title: "S3 Storage",
+        subtitle: "customer-pii bucket",
+        icon: <Cloud size={14} />,
+        detail: `${summary.bucketCount} export files`,
+      },
+      {
+        id: "target_git",
+        title: "Git Repository",
+        subtitle: "data/acme-repo",
+        icon: <Github size={14} />,
+        detail: `Branch: ${summary.gitBranch}`,
+      },
+      {
+        id: "target_telemetry",
+        title: "Host System",
+        subtitle: "system metrics & environment",
+        icon: <Activity size={14} />,
+        detail: "Protected host boundary",
+      },
+    ];
+
+    // Add registered MCP connections
+    for (const conn of connections) {
+      targets.push({
+        id: `target_conn_${conn.id}`,
+        title: conn.name,
+        subtitle: conn.transport,
+        icon: <Server size={14} />,
+        detail: conn.transport === "stdio" ? conn.command || "cli" : conn.url || "endpoint",
+      });
+    }
+
+    const spacing = 105;
+    const totalHeight = targets.length * spacing;
+    const centerY = Math.max(120, totalHeight / 2 - 20);
+
+    const calculatedNodes: Node[] = [
+      {
+        id: "identity",
+        type: "identity",
+        position: { x: 30, y: centerY },
+        data: identity,
+      },
+      {
+        id: "agent",
+        type: "agent",
+        position: { x: 290, y: centerY - 5 },
+        data: {
+          agentName: normalizeActorName(selectedAction?.actorId),
+          state: currentState,
+          activeTargetTitle: selectedAction?.targetTitle,
+        },
+      },
+    ];
+
+    targets.forEach((target, index) => {
+      const isActive = target.id === activeTargetId;
+      calculatedNodes.push({
+        id: target.id,
+        type: "target",
+        position: { x: 580, y: 30 + index * spacing },
+        data: {
+          ...target,
+          isActive,
+          state: isActive ? currentState : "idle",
+        },
+      });
     });
-    const body = (await response.json()) as { action?: Record<string, unknown>; error?: { message?: string } };
-    if (!response.ok || !body.action) {
-      notify(body.error?.message || "Resolution failed");
-      return;
-    }
-    setActions((current) => current.map((action) => (action.id === selectedAction.id ? apiAction(body.action as Record<string, unknown>, connections) : action)));
-    await refreshOperations();
-    notify(`Action ${status}`);
-  };
 
-  const renderInspector = () => (
-    <Panel className="overflow-hidden">
-      <SectionHeading icon={<ShieldCheck size={15} />} eyebrow="Action firewall" title="Interception inspector" />
-      <div className="p-5">
-        <div
-          className={`rounded-xl border p-4 ${
-            selectedAction.state === "blocked"
-              ? "border-red-200 bg-red-50/50"
-              : selectedAction.state === "allowed" || selectedAction.state === "approved"
-              ? "border-emerald-200 bg-emerald-50/40"
-              : "border-amber-200 bg-amber-50/40"
-          }`}
-        >
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-[13px] font-bold text-slate-900">{selectedAction.tool}</p>
-              <p className="mt-1 text-[10px] text-slate-500">{selectedAction.summary}</p>
-            </div>
-            <StatusPill tone={toneForState(selectedAction.state)} dot>
-              {selectedAction.state.replace("_", " ")}
-            </StatusPill>
-          </div>
-          <div className="mt-4 grid grid-cols-2 gap-3">
-            <div>
-              <p className="meta-label">Target Resource</p>
-              <p className="mt-1 text-[11px] font-semibold">{selectedAction.targetTitle}</p>
-            </div>
-            <div>
-              <p className="meta-label">Client / Agent</p>
-              <p className="mt-1 text-[11px] font-semibold">{normalizeActorName(selectedAction.actorId)}</p>
-            </div>
-            <div>
-              <p className="meta-label">Risk score</p>
-              <p className="mt-1 text-[11px] font-semibold">{selectedAction.score} / 100</p>
-            </div>
-            <div>
-              <p className="meta-label">Time</p>
-              <p className="mt-1 text-[11px] font-semibold">{selectedAction.timestamp}</p>
-            </div>
-          </div>
-        </div>
+    const calculatedEdges: Edge[] = [
+      {
+        id: "e_identity_agent",
+        source: "identity",
+        target: "agent",
+        style: { stroke: "#94a3b8", strokeWidth: 1.5 },
+        markerEnd: { type: MarkerType.ArrowClosed, color: "#94a3b8", width: 12, height: 12 },
+      },
+    ];
 
-        {selectedAction.id && (
-          <>
-            <p className="meta-label mt-5">Human override</p>
-            <div className="mt-3 grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => void mutateAction("approved")}
-                disabled={selectedAction.state === "approved" || selectedAction.state === "allowed" || selectedAction.state === "blocked"}
-                className="button-success"
-              >
-                <Check size={13} />
-                Approve
-              </button>
-              <button
-                type="button"
-                onClick={() => void mutateAction("blocked")}
-                disabled={selectedAction.state === "blocked" || selectedAction.state === "approved" || selectedAction.state === "allowed"}
-                className="button-danger justify-center"
-              >
-                <X size={13} />
-                Block
-              </button>
-            </div>
-            <button
-              type="button"
-              onClick={() => void mutateAction(selectedAction.state === "frozen" ? "approved" : "frozen")}
-              disabled={selectedAction.state === "blocked" || selectedAction.state === "approved" || selectedAction.state === "allowed"}
-              className="button-secondary mt-2 w-full justify-center"
-            >
-              <Pause size={13} />
-              {selectedAction.state === "frozen" ? "Resume action" : "Freeze action"}
-            </button>
-          </>
-        )}
-      </div>
-    </Panel>
-  );
+    targets.forEach((target) => {
+      const isActive = target.id === activeTargetId && currentState !== "idle";
+      const edgeColor =
+        currentState === "pending_approval" || currentState === "frozen"
+          ? "#d97706"
+          : currentState === "blocked"
+          ? "#e11d48"
+          : currentState === "allowed" || currentState === "approved"
+          ? "#16a34a"
+          : "#cbd5e1";
+
+      calculatedEdges.push({
+        id: `e_agent_${target.id}`,
+        source: "agent",
+        target: target.id,
+        animated: isActive,
+        style: {
+          stroke: isActive ? edgeColor : "#e2e8f0",
+          strokeWidth: isActive ? 2 : 1.2,
+          ...(isActive ? { strokeDasharray: "4 4" } : {}),
+        },
+        markerEnd: {
+          type: MarkerType.ArrowClosed,
+          color: isActive ? edgeColor : "#cbd5e1",
+          width: 12,
+          height: 12,
+        },
+      });
+    });
+
+    return { nodes: calculatedNodes, edges: calculatedEdges };
+  }, [connections, identity, selectedAction, summary]);
 
   return (
-    <main className="min-h-screen bg-[#fafafa] text-slate-900">
-      <header className="flex min-h-[68px] items-center justify-between border-b border-slate-200 bg-white px-4 lg:px-8">
-        <div className="flex items-center gap-5">
+    <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900">
+      {/* Top Header */}
+      <header className="h-14 bg-white border-b border-slate-200 px-4 sm:px-6 flex items-center justify-between sticky top-0 z-40">
+        <div className="flex items-center gap-6">
           <div className="flex items-center gap-2.5">
-            <div className="grid h-8 w-8 place-items-center rounded-lg bg-slate-900 text-white">
-              <ShieldCheck size={17} />
+            <div className="w-7 h-7 rounded bg-slate-900 text-white flex items-center justify-center font-bold">
+              <Shield size={16} />
             </div>
-            <span className="text-[15px] font-extrabold tracking-tight">
-              Ae<span className="text-blue-600">gis</span>
-            </span>
-            <span className="hidden rounded bg-blue-50 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-widest text-blue-700 sm:inline">
-              Control Plane
-            </span>
+            <div>
+              <span className="text-sm font-semibold tracking-tight text-slate-900">Aegis</span>
+              <span className="text-xs text-slate-500 ml-2 hidden sm:inline">Action Firewall & Control Plane</span>
+            </div>
           </div>
-          <nav className="hidden items-center gap-1 md:flex">
+
+          {/* Navigation Tabs */}
+          <nav className="flex items-center gap-1">
             <button
               type="button"
-              onClick={() => setView("topology")}
-              className={`rounded-lg px-3 py-2 text-xs font-bold ${
-                view === "topology" ? "bg-slate-100 text-slate-900" : "text-slate-500 hover:bg-slate-50"
+              onClick={() => setTab("topology")}
+              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                tab === "topology" ? "bg-slate-100 text-slate-900 font-semibold" : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
               }`}
             >
               Topology
             </button>
             <button
               type="button"
-              onClick={() => setView("connections")}
-              className={`rounded-lg px-3 py-2 text-xs font-bold ${
-                view === "connections" ? "bg-slate-100 text-slate-900" : "text-slate-500 hover:bg-slate-50"
+              onClick={() => setTab("approvals")}
+              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors flex items-center gap-1.5 ${
+                tab === "approvals" ? "bg-slate-100 text-slate-900 font-semibold" : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
               }`}
             >
-              MCP connections
+              Approvals
+              {pendingActions.length > 0 && (
+                <span className="bg-amber-100 text-amber-800 text-[10px] px-1.5 py-0.2 rounded-full font-bold">
+                  {pendingActions.length}
+                </span>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => setTab("activity")}
+              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                tab === "activity" ? "bg-slate-100 text-slate-900 font-semibold" : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
+              }`}
+            >
+              Activity & Audit
+            </button>
+            <button
+              type="button"
+              onClick={() => setTab("mcp")}
+              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                tab === "mcp" ? "bg-slate-100 text-slate-900 font-semibold" : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
+              }`}
+            >
+              MCP Servers ({connections.length})
             </button>
           </nav>
         </div>
+
+        {/* Header Right Metadata & Actions */}
         <div className="flex items-center gap-3">
-          <div className="hidden items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-emerald-700 sm:flex">
-            <span className={`h-1.5 w-1.5 rounded-full ${connected ? "animate-pulse bg-emerald-500" : "bg-amber-500"}`} />
-            {connected ? "Gateway operational" : "Connecting"}
+          <div className="hidden md:flex items-center gap-2 text-xs text-slate-500 bg-slate-50 border border-slate-200 px-2.5 py-1 rounded">
+            <Database size={13} className="text-slate-400" />
+            <span>Cloudflare D1:</span>
+            <span className="font-mono text-slate-700 font-medium">{summary.customers} customers</span>
           </div>
-          <div className="grid h-8 w-8 place-items-center rounded-full bg-gradient-to-br from-violet-500 to-blue-500 text-[10px] font-bold text-white">
-            AG
+
+          <div className="flex items-center gap-1.5 text-xs font-medium text-slate-600">
+            <span className={`w-2 h-2 rounded-full ${connected ? "bg-emerald-500" : "bg-amber-500"}`} />
+            <span className="hidden sm:inline">{connected ? "Gateway live" : "Connecting…"}</span>
           </div>
-          <button type="button" className="md:hidden" onClick={() => setView(view === "topology" ? "connections" : "topology")}>
-            <Menu size={18} />
+
+          <button
+            type="button"
+            onClick={handleManualRefresh}
+            disabled={isRefreshing}
+            className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-md transition-colors"
+            title="Refresh state"
+          >
+            <RefreshCw size={14} className={isRefreshing ? "animate-spin" : ""} />
           </button>
         </div>
       </header>
 
-      <div className="flex min-h-[calc(100vh-68px)]">
-        <aside className="hidden w-[64px] flex-col items-center gap-3 border-r border-slate-200 bg-white py-5 lg:flex">
-          <NavIcon active={view === "topology"}>
-            {view === "topology" ? <LayoutGrid size={17} /> : <Network size={17} />}
-          </NavIcon>
-          <NavIcon active={view === "connections"}>
-            <Link2 size={17} />
-          </NavIcon>
-          <NavIcon>
-            <LockKeyhole size={17} />
-          </NavIcon>
-          <NavIcon>
-            <FileKey2 size={17} />
-          </NavIcon>
-          <div className="mt-auto">
-            <NavIcon>
-              <CircleHelp size={17} />
-            </NavIcon>
-          </div>
-        </aside>
-
-        <section className="min-w-0 flex-1 p-4 lg:p-7">
-          {view === "topology" ? (
-            <div className="space-y-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h1 className="text-[18px] font-extrabold tracking-tight">Agent topology</h1>
-                    <StatusPill tone={connected ? "green" : "amber"} dot>
-                      {connected ? "SSE connected" : "Waiting for gateway"}
-                    </StatusPill>
-                  </div>
-                  <p className="mt-1 text-[11px] text-slate-500">
-                    Live Agent Traffic ({activeAgentName}) → Policy Firewall → Cloudflare & Enterprise Backends
-                  </p>
-                </div>
-                <button type="button" onClick={() => setView("connections")} className="button-primary">
-                  <Link2 size={14} />
-                  Manage MCP connections
+      {/* Main Content Area */}
+      <main className="flex-1 p-4 sm:p-6 max-w-7xl w-full mx-auto">
+        {tab === "topology" && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="text-base font-semibold text-slate-900">System Topology</h1>
+                <p className="text-xs text-slate-500">Live request routing from client agents through the policy firewall to protected targets.</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setTab("approvals")}
+                  className="btn btn-secondary text-xs"
+                >
+                  <AlertTriangle size={13} className="text-amber-600" />
+                  View Approvals ({pendingActions.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTab("mcp")}
+                  className="btn btn-primary text-xs"
+                >
+                  <Plus size={13} />
+                  Add MCP Server
                 </button>
               </div>
+            </div>
 
-              <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_330px]">
-                <div className="flow-shell dot-grid h-[680px] min-h-[580px] overflow-hidden rounded-2xl border border-slate-200 bg-white/55 shadow-panel">
-                  <ReactFlow
-                    nodes={nodes}
-                    edges={edges}
-                    nodeTypes={nodeTypes}
-                    onNodeClick={(_, node) => {
-                      notify(`Selected: ${node.data?.title || node.id}`);
-                    }}
-                    fitView
-                    fitViewOptions={{ padding: 0.16 }}
-                    nodesDraggable={false}
-                    nodesConnectable={false}
-                    zoomOnDoubleClick={false}
-                  >
-                    <Background color="#d7dce5" gap={18} size={1} />
-                    <Controls showInteractive={false} />
-                    <MiniMap
-                      nodeColor={(node) => (node.type === "agent" ? "#172033" : node.type === "target" ? "#e2e8f0" : "#cbd5e1")}
-                      maskColor="rgba(248,250,252,.76)"
-                    />
-                  </ReactFlow>
-                </div>
-                {renderInspector()}
+            {/* Split: Canvas and Inspector */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+              {/* ReactFlow Canvas */}
+              <div className="lg:col-span-8 bg-white border border-slate-200 rounded-lg shadow-sm h-[580px] flow-shell relative overflow-hidden">
+                <ReactFlow
+                  nodes={nodes}
+                  edges={edges}
+                  nodeTypes={nodeTypes}
+                  onNodeClick={(_, node) => {
+                    const matched = actions.find((a) => a.target === node.id);
+                    if (matched) setSelectedId(matched.id);
+                  }}
+                  fitView
+                  fitViewOptions={{ padding: 0.18 }}
+                  nodesDraggable={false}
+                  nodesConnectable={false}
+                  zoomOnDoubleClick={false}
+                >
+                  <Background color="#cbd5e1" gap={20} size={1} />
+                  <Controls showInteractive={false} />
+                  <MiniMap maskColor="rgba(241, 245, 249, 0.7)" />
+                </ReactFlow>
               </div>
 
-              <OperationsPanels actions={actions} audit={audit} selectedId={selectedId} setSelectedId={setSelectedId} onRefresh={() => void refreshOperations()} />
-            </div>
-          ) : (
-            <div className="space-y-5">
-              <div className="flex flex-wrap items-end justify-between gap-3">
-                <div>
+              {/* Triage / Inspector Panel */}
+              <div className="lg:col-span-4 bg-white border border-slate-200 rounded-lg shadow-sm p-4 flex flex-col h-[580px]">
+                <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                   <div className="flex items-center gap-2">
-                    <h1 className="text-[22px] font-extrabold tracking-tight">MCP connections</h1>
-                    <StatusPill tone="blue">Gateway registry</StatusPill>
+                    <ShieldCheck size={16} className="text-slate-700" />
+                    <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-700">Action Inspector</h2>
                   </div>
-                  <p className="mt-1 max-w-2xl text-[11px] leading-5 text-slate-500">
-                    Register trusted MCP servers, test their transport, discover tools, and give clients a policy-enforced gateway URL.
-                  </p>
+                  {selectedAction && <StatusBadge state={selectedAction.state} />}
                 </div>
-                <div className="flex items-center gap-2 text-[10px] text-slate-500">
-                  <Radio size={13} className={connected ? "text-emerald-500" : "text-amber-500"} />
-                  Live agent and audit stream
-                </div>
-              </div>
 
-              <div className="grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(360px,.9fr)]">
-                <Panel className="overflow-hidden">
-                  <SectionHeading icon={<Plus size={15} />} eyebrow="Connection setup" title="Register an MCP server" />
-                  <ConnectionForm form={form} setForm={setForm} onSubmit={(event) => void registerConnection(event)} busy={formBusy} />
-                </Panel>
-                <ConnectionsPanel
-                  connections={connections}
-                  selected={selectedConnection}
-                  onSelect={(connection) => {
-                    setSelectedConnectionId(connection.id);
-                    setDiscovery(null);
-                    setConfig(null);
-                  }}
-                  onTest={() => void testConnection()}
-                  onDiscover={() => void discoverConnection()}
-                  onDelete={() => void deleteConnection()}
-                  busy={connectionBusy}
-                />
-              </div>
+                {selectedAction ? (
+                  <div className="flex-1 overflow-y-auto pt-3 space-y-4">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">{selectedAction.tool}</p>
+                      <p className="text-xs text-slate-600 mt-1 leading-relaxed">{selectedAction.summary}</p>
+                    </div>
 
-              <div className="grid gap-4 xl:grid-cols-2">
-                <ToolsPanel tools={tools} discovery={discovery} onDiscover={() => void discoverConnection()} />
-                <ClientConfigPanel
-                  connection={selectedConnection}
-                  config={config}
-                  onLoad={() => void loadConfig()}
-                  onCopy={(text) => {
-                    void navigator.clipboard?.writeText(text);
-                    notify("Snippet copied");
-                  }}
-                />
-              </div>
+                    <div className="grid grid-cols-2 gap-2 text-xs bg-slate-50 border border-slate-200 rounded-md p-2.5">
+                      <div>
+                        <span className="text-[11px] text-slate-400 block">Target</span>
+                        <span className="font-medium text-slate-800">{selectedAction.targetTitle}</span>
+                      </div>
+                      <div>
+                        <span className="text-[11px] text-slate-400 block">Agent / Client</span>
+                        <span className="font-medium text-slate-800">{normalizeActorName(selectedAction.actorId)}</span>
+                      </div>
+                      <div>
+                        <span className="text-[11px] text-slate-400 block">Risk Score</span>
+                        <span className={`font-semibold ${selectedAction.score >= 70 ? "text-rose-600" : "text-emerald-600"}`}>
+                          {selectedAction.score} / 100
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-[11px] text-slate-400 block">Time</span>
+                        <span className="font-medium text-slate-800">{selectedAction.timestamp}</span>
+                      </div>
+                    </div>
 
-              <OperationsPanels actions={actions} audit={audit} selectedId={selectedId} setSelectedId={setSelectedId} onRefresh={() => void refreshOperations()} />
+                    {selectedAction.payload ? (
+                      <div>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="text-xs font-medium text-slate-600">Payload Data</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigator.clipboard.writeText(JSON.stringify(selectedAction.payload, null, 2));
+                              showToast("Payload copied to clipboard", "success");
+                            }}
+                            className="text-xs text-slate-500 hover:text-slate-800 flex items-center gap-1"
+                          >
+                            <Copy size={11} /> Copy JSON
+                          </button>
+                        </div>
+                        <pre className="text-[11px] font-mono bg-slate-900 text-slate-100 p-3 rounded-md overflow-x-auto max-h-48 leading-tight">
+                          {JSON.stringify(selectedAction.payload, null, 2)}
+                        </pre>
+                      </div>
+                    ) : null}
+
+                    {/* Decision Action Buttons */}
+                    <div className="pt-2 border-t border-slate-100 mt-auto">
+                      <p className="text-xs font-medium text-slate-700 mb-2">Human Control Action</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => mutateAction(selectedAction.id, "approved")}
+                          disabled={selectedAction.state === "approved" || selectedAction.state === "allowed"}
+                          className="btn btn-success text-xs"
+                        >
+                          <Check size={14} /> Approve
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => mutateAction(selectedAction.id, "blocked")}
+                          disabled={selectedAction.state === "blocked"}
+                          className="btn btn-danger text-xs"
+                        >
+                          <X size={14} /> Block
+                        </button>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => mutateAction(selectedAction.id, selectedAction.state === "frozen" ? "approved" : "frozen")}
+                        className="btn btn-secondary text-xs w-full mt-2"
+                      >
+                        <Pause size={13} />
+                        {selectedAction.state === "frozen" ? "Resume Action" : "Freeze Action"}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex-1 flex flex-col items-center justify-center text-center p-6 text-slate-400">
+                    <Shield size={28} className="mb-2 stroke-1" />
+                    <p className="text-xs">Select any node or stream item to inspect details.</p>
+                  </div>
+                )}
+              </div>
             </div>
-          )}
-        </section>
-      </div>
+          </div>
+        )}
 
+        {/* Tab 2: Pending Approvals */}
+        {tab === "approvals" && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="text-base font-semibold text-slate-900">Pending Approvals</h1>
+                <p className="text-xs text-slate-500">Autonomous actions held by policy awaiting human verification.</p>
+              </div>
+              <span className="text-xs text-slate-500 bg-white border border-slate-200 px-2 py-1 rounded">
+                {pendingActions.length} actions waiting
+              </span>
+            </div>
+
+            {pendingActions.length > 0 ? (
+              <div className="bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden divide-y divide-slate-100">
+                {pendingActions.map((action) => (
+                  <div key={action.id} className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 hover:bg-slate-50/60 transition-colors">
+                    <div className="flex items-start gap-3 min-w-0">
+                      <div className="w-8 h-8 rounded bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-700 shrink-0 mt-0.5">
+                        <AlertTriangle size={15} />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-semibold text-slate-900">{action.tool}</p>
+                          <StatusBadge state={action.state} />
+                          <span className="text-xs font-medium text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-100">
+                            Risk: {action.score}/100
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-600 mt-1">{action.summary}</p>
+                        <div className="flex items-center gap-4 mt-2 text-xs text-slate-400">
+                          <span>Target: <b className="text-slate-700 font-medium">{action.targetTitle}</b></span>
+                          <span>Client: <b className="text-slate-700 font-medium">{normalizeActorName(action.actorId)}</b></span>
+                          <span>Time: {action.timestamp}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto">
+                      <button
+                        type="button"
+                        onClick={() => mutateAction(action.id, "approved")}
+                        className="btn btn-success text-xs flex-1 sm:flex-initial"
+                      >
+                        <Check size={13} /> Approve
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => mutateAction(action.id, "blocked")}
+                        className="btn btn-danger text-xs flex-1 sm:flex-initial"
+                      >
+                        <X size={13} /> Block
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="bg-white border border-slate-200 rounded-lg p-12 text-center">
+                <CheckCircle2 size={32} className="mx-auto text-emerald-600 mb-2 stroke-1" />
+                <h3 className="text-sm font-semibold text-slate-900">All Clear</h3>
+                <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
+                  No actions are currently pending approval. All incoming agent actions are processed deterministically.
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Tab 3: Activity & Audit Trail */}
+        {tab === "activity" && (
+          <div className="space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h1 className="text-base font-semibold text-slate-900">Activity & Audit Trail</h1>
+                <p className="text-xs text-slate-500">Live stream of intercepted requests and immutable audit ledger.</p>
+              </div>
+
+              {/* Filters */}
+              <div className="flex items-center gap-2">
+                <div className="relative">
+                  <Search size={13} className="absolute left-2.5 top-2.5 text-slate-400" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search actions…"
+                    className="pl-8 pr-3 py-1.5 text-xs border border-slate-300 rounded-md bg-white text-slate-900 focus:outline-none focus:border-blue-500 w-48"
+                  />
+                </div>
+                <select
+                  value={filterState}
+                  onChange={(e) => setFilterState(e.target.value)}
+                  className="px-2.5 py-1.5 text-xs border border-slate-300 rounded-md bg-white text-slate-700 focus:outline-none"
+                >
+                  <option value="all">All Statuses</option>
+                  <option value="pending">Pending</option>
+                  <option value="blocked">Blocked</option>
+                  <option value="allowed">Allowed / Approved</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+              {/* Actions Stream */}
+              <div className="lg:col-span-7 bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden flex flex-col">
+                <div className="p-3 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                  <span className="text-xs font-semibold text-slate-700">Live Gateway Actions ({filteredActions.length})</span>
+                </div>
+                <div className="divide-y divide-slate-100 max-h-[500px] overflow-y-auto">
+                  {filteredActions.length > 0 ? (
+                    filteredActions.map((action) => (
+                      <div
+                        key={action.id}
+                        onClick={() => {
+                          setSelectedId(action.id);
+                          setTab("topology");
+                        }}
+                        className={`p-3 text-xs cursor-pointer hover:bg-slate-50 transition-colors flex items-center justify-between gap-3 ${
+                          action.id === selectedId ? "bg-blue-50/40" : ""
+                        }`}
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold text-slate-900">{action.tool}</span>
+                            <span className="text-[11px] text-slate-500">· {action.targetTitle}</span>
+                          </div>
+                          <p className="text-slate-600 truncate mt-0.5">{action.summary}</p>
+                          <span className="text-[10px] text-slate-400 mt-1 block">
+                            {normalizeActorName(action.actorId)} · {action.timestamp}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <StatusBadge state={action.state} />
+                          <ChevronRight size={13} className="text-slate-300" />
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="p-8 text-center text-xs text-slate-500">No actions matched your filter.</div>
+                  )}
+                </div>
+              </div>
+
+              {/* Audit Ledger */}
+              <div className="lg:col-span-5 bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden flex flex-col">
+                <div className="p-3 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                  <span className="text-xs font-semibold text-slate-700">Audit Events ({audit.length})</span>
+                  <span className="text-[11px] text-slate-400 font-mono">Immutable</span>
+                </div>
+                <div className="divide-y divide-slate-100 max-h-[500px] overflow-y-auto">
+                  {audit.length > 0 ? (
+                    audit.map((evt) => (
+                      <div key={evt.id} className="p-3 text-xs">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="font-mono font-medium text-slate-800">{evt.type}</span>
+                          <span className="text-slate-400">{new Date(evt.timestamp).toLocaleTimeString()}</span>
+                        </div>
+                        <p className="text-slate-600 mt-1 text-[11px] leading-relaxed">
+                          {evt.reason || `Transitioned to ${evt.toStatus}`}
+                        </p>
+                        <div className="mt-1 flex items-center gap-2 text-[10px] text-slate-400 font-mono">
+                          <span>ID: {evt.actionId.slice(0, 14)}…</span>
+                          {evt.actorId && <span>· by {evt.actorId}</span>}
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="p-8 text-center text-xs text-slate-500">No audit events recorded yet.</div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Tab 4: MCP Connections & Tool Registry */}
+        {tab === "mcp" && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="text-base font-semibold text-slate-900">Model Context Protocol Servers</h1>
+                <p className="text-xs text-slate-500">Register and govern MCP servers, inspect discovered tools, and configure client endpoints.</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+              {/* Left Column: Register Form */}
+              <div className="lg:col-span-5 bg-white border border-slate-200 rounded-lg shadow-sm p-4">
+                <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-700 mb-3 flex items-center gap-1.5">
+                  <Plus size={14} /> Register New MCP Server
+                </h2>
+
+                <form onSubmit={registerConnection} className="space-y-3">
+                  <div>
+                    <label className="form-label">Server Name</label>
+                    <input
+                      type="text"
+                      required={form.transport === "stdio"}
+                      value={form.name}
+                      onChange={(e) => setForm({ ...form, name: e.target.value })}
+                      placeholder="e.g. GitHub MCP or Cloudflare"
+                      className="form-input"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="form-label">Transport</label>
+                      <select
+                        value={form.transport}
+                        onChange={(e) => setForm({ ...form, transport: e.target.value as Transport })}
+                        className="form-input"
+                      >
+                        <option value="streamable-http">Streamable HTTP</option>
+                        <option value="sse">SSE</option>
+                        <option value="stdio">stdio</option>
+                      </select>
+                    </div>
+                    {form.transport !== "stdio" ? (
+                      <div>
+                        <label className="form-label">Server URL</label>
+                        <input
+                          type="url"
+                          required
+                          value={form.url}
+                          onChange={(e) => setForm({ ...form, url: e.target.value })}
+                          placeholder="https://…"
+                          className="form-input font-mono text-xs"
+                        />
+                      </div>
+                    ) : (
+                      <div>
+                        <label className="form-label">Command</label>
+                        <input
+                          type="text"
+                          required
+                          value={form.command}
+                          onChange={(e) => setForm({ ...form, command: e.target.value })}
+                          placeholder="npx"
+                          className="form-input font-mono text-xs"
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  {form.transport === "stdio" && (
+                    <div>
+                      <label className="form-label">Arguments (one per line)</label>
+                      <textarea
+                        value={form.args}
+                        onChange={(e) => setForm({ ...form, args: e.target.value })}
+                        placeholder="-y&#10;@modelcontextprotocol/server-github"
+                        rows={2}
+                        className="form-input font-mono text-xs"
+                      />
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="form-label">Environment Variables (KEY=VALUE per line)</label>
+                    <textarea
+                      value={form.env}
+                      onChange={(e) => setForm({ ...form, env: e.target.value })}
+                      placeholder="API_KEY=secret_value"
+                      rows={2}
+                      className="form-input font-mono text-xs"
+                    />
+                  </div>
+
+                  <div className="pt-2">
+                    <button
+                      type="submit"
+                      disabled={formBusy}
+                      className="btn btn-primary text-xs w-full"
+                    >
+                      {formBusy ? "Registering…" : "Register MCP Connection"}
+                    </button>
+                  </div>
+                </form>
+              </div>
+
+              {/* Right Column: Connection List & Details */}
+              <div className="lg:col-span-7 space-y-4">
+                <div className="bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden">
+                  <div className="p-3 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                    <span className="text-xs font-semibold text-slate-700">Registered MCP Gateways</span>
+                    <span className="text-xs text-slate-500">{connections.length} active</span>
+                  </div>
+
+                  <div className="divide-y divide-slate-100">
+                    {connections.length > 0 ? (
+                      connections.map((c) => (
+                        <div
+                          key={c.id}
+                          className={`p-3.5 transition-colors ${
+                            selectedConnection?.id === c.id ? "bg-blue-50/30" : ""
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2.5">
+                              <div className="w-7 h-7 rounded bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-700 shrink-0">
+                                {c.transport === "stdio" ? <Terminal size={14} /> : <Server size={14} />}
+                              </div>
+                              <div>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs font-semibold text-slate-900">{c.name}</span>
+                                  <span className="text-[10px] font-mono text-slate-500 bg-slate-100 px-1.5 py-0.2 rounded border border-slate-200">
+                                    {c.transport}
+                                  </span>
+                                </div>
+                                <p className="text-[11px] text-slate-500 font-mono mt-0.5 truncate max-w-sm">
+                                  {c.transport === "stdio" ? `${c.command} ${(c.args || []).join(" ")}` : c.url}
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedConnectionId(c.id);
+                                  testConnection(c.id);
+                                }}
+                                disabled={connectionBusy === "test"}
+                                className="btn btn-secondary text-xs px-2 py-1"
+                              >
+                                Test
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedConnectionId(c.id);
+                                  discoverTools(c.id);
+                                }}
+                                disabled={connectionBusy === "discover"}
+                                className="btn btn-secondary text-xs px-2 py-1"
+                              >
+                                Tools
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedConnectionId(c.id);
+                                  loadConfig(c.id);
+                                }}
+                                className="btn btn-secondary text-xs px-2 py-1"
+                              >
+                                Config
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => deleteConnection(c.id)}
+                                className="p-1 text-slate-400 hover:text-rose-600 rounded ml-1"
+                                title="Remove connection"
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="p-8 text-center text-xs text-slate-500">
+                        No external MCP servers registered yet.
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Discovered Tools Display */}
+                {discovery && (
+                  <div className="bg-white border border-slate-200 rounded-lg shadow-sm p-4">
+                    <div className="flex items-center justify-between pb-2 border-b border-slate-100 mb-3">
+                      <span className="text-xs font-semibold text-slate-800">
+                        Discovered Tools ({discovery.tools?.length || 0})
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setDiscovery(null)}
+                        className="text-slate-400 hover:text-slate-700"
+                      >
+                        <X size={13} />
+                      </button>
+                    </div>
+                    <div className="space-y-2 max-h-48 overflow-y-auto">
+                      {discovery.tools?.map((t) => (
+                        <div key={t.name} className="p-2 border border-slate-100 rounded bg-slate-50 text-xs">
+                          <span className="font-mono font-medium text-slate-900">{t.name}</span>
+                          {t.description && <p className="text-[11px] text-slate-600 mt-0.5">{t.description}</p>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Client Configuration Drawer */}
+                {config && (
+                  <div className="bg-white border border-slate-200 rounded-lg shadow-sm p-4">
+                    <div className="flex items-center justify-between pb-2 border-b border-slate-100 mb-2">
+                      <span className="text-xs font-semibold text-slate-800">Client Integration Snippet</span>
+                      <button
+                        type="button"
+                        onClick={() => setConfig(null)}
+                        className="text-slate-400 hover:text-slate-700"
+                      >
+                        <X size={13} />
+                      </button>
+                    </div>
+                    <p className="text-[11px] text-slate-500 mb-2">Paste into your IDE or `.mcp.json` file:</p>
+                    <pre className="text-[11px] font-mono bg-slate-900 text-slate-100 p-3 rounded-md overflow-x-auto max-h-44">
+                      {JSON.stringify(config.claudeDesktop || config.mcp, null, 2)}
+                    </pre>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </main>
+
+      {/* Toast Notification */}
       {toast && (
-        <div className="toast">
-          <Check size={13} className="text-emerald-400" />
-          {toast}
+        <div className="fixed bottom-4 right-4 z-50 bg-slate-900 text-white text-xs px-3.5 py-2.5 rounded-md shadow-lg flex items-center gap-2 animate-in fade-in slide-in-from-bottom-2">
+          {toast.type === "success" ? (
+            <CheckCircle2 size={14} className="text-emerald-400" />
+          ) : toast.type === "error" ? (
+            <AlertCircle size={14} className="text-rose-400" />
+          ) : (
+            <Shield size={14} className="text-blue-400" />
+          )}
+          <span>{toast.message}</span>
         </div>
       )}
-    </main>
+    </div>
   );
 }
