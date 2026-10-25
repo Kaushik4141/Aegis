@@ -273,15 +273,16 @@ MCP gating only covers traffic that flows through the gateway. The sandbox
 (`apps/sandbox`, port `8788`) closes that gap for everything else — in two
 styles:
 
-**Interactive workspaces (the daily-driver experience).** Leave the command
-empty when creating a sandbox and you get a persistent, monitored workspace:
-open the dashboard's **Sandboxes** view, click into the terminal, and run your
-own agents exactly as you would on your laptop — `claude`, `codex`, and `tsx`
-are preinstalled. Work survives stop/restart (the workspace and your agent
-logins are kept); delete removes it for good. Every DNS lookup, outbound
-connection (with owning process), process, and file write lands on the
-timeline next to the terminal, and direct access to registered business
-systems raises shadow-access alerts in real time.
+**Interactive workspaces (the daily-driver experience).** The dashboard's
+**Sandboxes** view is an October-style canvas: launch a Shell, Claude Code,
+or Codex from the toolbar and each agent opens as its own draggable window
+with a live terminal — CLI agents auto-start inside their window. Windows
+persist across stop/restart (the workspace and your agent logins are kept)
+and across dashboard reloads (canvas positions are saved); delete removes a
+workspace for good. Every DNS lookup, outbound connection (with owning
+process), process, and file write lands in the inspector timeline, and
+direct access to registered business systems turns a window red with a
+shadow-access alert in real time.
 
 **One-shot runs (scripted agents and demos).**
 

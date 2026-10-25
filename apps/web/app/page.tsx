@@ -8,8 +8,10 @@ import {
   MiniMap,
   Position,
   ReactFlow,
+  applyNodeChanges,
   type Edge,
   type Node,
+  type NodeChange,
   type NodeProps,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
@@ -28,6 +30,7 @@ import {
   Database,
   FileKey2,
   Github,
+  GripVertical,
   KeyRound,
   LayoutGrid,
   Link2,
@@ -1164,8 +1167,25 @@ function sandboxTerminalUrl(sandboxId: string): string {
   return `${protocol}://${window.location.hostname}:${process.env.NEXT_PUBLIC_SANDBOX_WS_PORT || "8788"}/sandboxes/${target}/terminal`;
 }
 
-function SandboxTerminal({ sandboxId, onClosed }: { sandboxId: string; onClosed: () => void }) {
+function SandboxTerminal({
+  sandboxId,
+  initialInput,
+  onClosed,
+  height = 430,
+}: {
+  sandboxId: string;
+  /** Sent once when the session opens — used to auto-start an agent (e.g. "claude\n"). */
+  initialInput?: string;
+  onClosed: () => void;
+  height?: number;
+}) {
   const hostRef = useRef<HTMLDivElement>(null);
+  const closedRef = useRef(onClosed);
+  closedRef.current = onClosed;
+  const initialRef = useRef(initialInput);
+  // Only the first initialInput per sandbox session matters; later prop
+  // changes must not restart the terminal.
+  if (initialRef.current === undefined && initialInput !== undefined) initialRef.current = initialInput;
 
   useEffect(() => {
     let disposed = false;
@@ -1187,11 +1207,14 @@ function SandboxTerminal({ sandboxId, onClosed }: { sandboxId: string; onClosed:
 
       socket = new WebSocket(sandboxTerminalUrl(sandboxId));
       socket.binaryType = "arraybuffer";
-      socket.onopen = () => socket?.send(JSON.stringify({ t: "r", w: term?.cols || 100, h: term?.rows || 28 }));
+      socket.onopen = () => {
+        socket?.send(JSON.stringify({ t: "r", w: term?.cols || 100, h: term?.rows || 28 }));
+        if (initialRef.current) socket?.send(JSON.stringify({ t: "i", d: initialRef.current }));
+      };
       socket.onmessage = (event) => {
         if (typeof event.data !== "string") term?.write(new Uint8Array(event.data));
       };
-      socket.onclose = () => { term?.write("\r\n\x1b[90m— session ended —\x1b[0m\r\n"); onClosed(); };
+      socket.onclose = () => { term?.write("\r\n\x1b[90m— session ended —\x1b[0m\r\n"); closedRef.current(); };
       term.onData((data) => {
         if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ t: "i", d: data }));
       });
@@ -1204,9 +1227,9 @@ function SandboxTerminal({ sandboxId, onClosed }: { sandboxId: string; onClosed:
       socket?.close();
       term?.dispose();
     };
-  }, [sandboxId, onClosed]);
+  }, [sandboxId]);
 
-  return <div ref={hostRef} className="h-[430px] w-full overflow-hidden rounded-xl bg-[#0b1020] p-2" />;
+  return <div ref={hostRef} className="w-full overflow-hidden bg-[#0b1020]" style={{ height }} />;
 }
 
 function renderTimelineEvent(event: SandboxEventUi) {
@@ -1234,6 +1257,78 @@ function renderTimelineEvent(event: SandboxEventUi) {
   );
 }
 
+type SandboxNodeData = {
+  sandbox: SandboxRecordUi;
+  hasAlert: boolean;
+  initialCommand?: string;
+  onInspect: (id: string) => void;
+  onSessionEnded: (id: string) => void;
+};
+
+const CANVAS_POSITIONS_KEY = "aegis-canvas-positions";
+const canvasSlot = (slot: number) => ({ x: 40 + (slot % 2) * 660, y: 24 + Math.floor(slot / 2) * 430 });
+
+const SANDBOX_TEMPLATES = [
+  { id: "shell", label: "Shell", command: "" },
+  { id: "claude", label: "Claude Code", command: "claude" },
+  { id: "codex", label: "Codex", command: "codex" },
+] as const;
+
+/**
+ * One agent workspace as a draggable canvas window: header is the drag
+ * handle, the body hosts a live PTY terminal (nodrag/nowhell so clicks,
+ * typing, and scrolling stay inside the terminal).
+ */
+function SandboxWindowNode({ data, selected }: NodeProps) {
+  const { sandbox, hasAlert, initialCommand, onInspect, onSessionEnded } = data as SandboxNodeData;
+  const running = sandbox.status === "running";
+  return (
+    <div
+      className={`w-[620px] overflow-hidden rounded-xl border bg-white shadow-panel ${
+        hasAlert ? "border-red-300 ring-2 ring-red-300" : selected ? "border-blue-300 ring-2 ring-blue-300" : "border-slate-200"
+      }`}
+    >
+      <div className="flex cursor-grab items-center justify-between gap-2 border-b border-slate-100 bg-slate-50/70 px-3 py-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <GripVertical size={12} className="shrink-0 text-slate-300" />
+          <span className="truncate text-[11px] font-bold text-slate-800">{sandbox.name}</span>
+          <StatusPill tone={sandbox.mode === "enforce" ? "blue" : "slate"}>{sandbox.mode}</StatusPill>
+          {hasAlert && (
+            <StatusPill tone="red">
+              <AlertTriangle size={10} /> alert
+            </StatusPill>
+          )}
+        </div>
+        <button type="button" onClick={() => onInspect(sandbox.id)} className="shrink-0">
+          <StatusPill tone={running ? "green" : "slate"} dot>
+            {running ? "live" : sandbox.status}
+          </StatusPill>
+        </button>
+      </div>
+      <div className="nodrag nowheel">
+        {running && sandbox.interactive ? (
+          <SandboxTerminal
+            key={sandbox.id}
+            sandboxId={sandbox.id}
+            initialInput={initialCommand || undefined}
+            onClosed={() => onSessionEnded(sandbox.id)}
+            height={330}
+          />
+        ) : (
+          <div className="grid h-[330px] place-items-center bg-slate-50 text-center">
+            <div>
+              <p className="text-[11px] font-bold text-slate-600">{running ? "workspace starting…" : "stopped"}</p>
+              <p className="mt-1 text-[10px] text-slate-400">Use Restart in the inspector to bring it back.</p>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+const canvasNodeTypes = { sandboxWindow: SandboxWindowNode };
+
 function SandboxesView({ notify }: { notify: (message: string) => void }) {
   const [sandboxes, setSandboxes] = useState<SandboxRecordUi[]>([]);
   const [selectedId, setSelectedId] = useState("");
@@ -1247,25 +1342,54 @@ function SandboxesView({ notify }: { notify: (message: string) => void }) {
   const [stdinText, setStdinText] = useState("");
   const [busy, setBusy] = useState(false);
   const [serviceUp, setServiceUp] = useState(true);
+  const [nodes, setNodes] = useState<Node[]>([]);
+  const [alertIds, setAlertIds] = useState<string[]>([]);
+  const initialCommands = useRef<Record<string, string>>({});
+  const positions = useRef<Record<string, { x: number; y: number }>>({});
 
   const selected = sandboxes.find((sandbox) => sandbox.id === selectedId) || null;
   const alertCount = events.filter((event) => event.type === "alert").length;
 
+  useEffect(() => {
+    // Canvas layout survives reloads; sandbox ids are stable.
+    try {
+      positions.current = { ...positions.current, ...JSON.parse(window.localStorage.getItem(CANVAS_POSITIONS_KEY) || "{}") };
+    } catch { /* fresh canvas */ }
+  }, []);
+
   const refresh = useCallback(async () => {
+    let list: SandboxRecordUi[] = [];
     try {
       const response = await fetch("/sandbox-api/sandboxes", { cache: "no-store" });
       if (!response.ok) throw new Error("unavailable");
       setServiceUp(true);
-      const body = (await response.json()) as { sandboxes?: SandboxRecordUi[] };
-      const list = body.sandboxes || [];
+      list = ((await response.json()) as { sandboxes?: SandboxRecordUi[] }).sandboxes || [];
       setSandboxes(list);
-      setSelectedId((current) => current || list[0]?.id || "");
     } catch {
       setServiceUp(false);
       return;
     }
-    const id = selectedId || sandboxes[0]?.id;
-    if (!id) return;
+    // Alert badges: any shadow-access alert turns a node red.
+    void Promise.all(
+      list
+        .filter((sandbox) => sandbox.status === "running")
+        .map(async (sandbox) => {
+          try {
+            const response = await fetch(`/api/v1/sandboxes/${sandbox.id}/events?type=alert&limit=1`, { cache: "no-store" });
+            if (!response.ok) return null;
+            const body = (await response.json()) as { events?: unknown[] };
+            return (body.events?.length || 0) > 0 ? sandbox.id : null;
+          } catch {
+            return null;
+          }
+        }),
+    ).then((ids) => setAlertIds(ids.filter((id): id is string => Boolean(id))));
+    const id = selectedId || list[0]?.id;
+    if (!id) {
+      setEvents([]);
+      setLogs([]);
+      return;
+    }
     try {
       const [eventsResponse, logsResponse] = await Promise.all([
         fetch(`/api/v1/sandboxes/${id}/events?limit=300`, { cache: "no-store" }),
@@ -1276,13 +1400,77 @@ function SandboxesView({ notify }: { notify: (message: string) => void }) {
     } catch {
       // gateway may be offline; keep last known
     }
-  }, [selectedId, sandboxes]);
+  }, [selectedId]);
 
   useEffect(() => {
     void refresh();
     const timer = window.setInterval(() => void refresh(), 3000);
     return () => window.clearInterval(timer);
   }, [refresh]);
+
+  // Mirror sandboxes into canvas nodes; existing node positions win so
+  // windows never jump when the poll refreshes their data.
+  useEffect(() => {
+    setNodes((previous) =>
+      sandboxes.map((sandbox, index) => {
+        const existing = previous.find((node) => node.id === sandbox.id);
+        const position = existing?.position ?? positions.current[sandbox.id] ?? canvasSlot(index);
+        return {
+          id: sandbox.id,
+          type: "sandboxWindow",
+          position,
+          data: {
+            sandbox,
+            hasAlert: alertIds.includes(sandbox.id),
+            initialCommand: initialCommands.current[sandbox.id] ?? "",
+            onInspect: (id: string) => setSelectedId(id),
+            onSessionEnded: () => void refresh(),
+          },
+        };
+      }),
+    );
+  }, [sandboxes, alertIds, refresh]);
+
+  const onNodesChange = useCallback((changes: NodeChange[]) => {
+    setNodes((current) => applyNodeChanges(changes, current));
+    let moved = false;
+    for (const change of changes) {
+      if (change.type === "position" && change.position && change.id) {
+        positions.current[change.id] = change.position;
+        moved = true;
+      }
+    }
+    if (moved) {
+      try { window.localStorage.setItem(CANVAS_POSITIONS_KEY, JSON.stringify(positions.current)); } catch { /* private mode */ }
+    }
+  }, []);
+
+  const createFromTemplate = async (template: (typeof SANDBOX_TEMPLATES)[number]) => {
+    setBusy(true);
+    try {
+      const response = await fetch("/sandbox-api/sandboxes", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name: `${template.label} ${Date.now().toString(36).slice(-4)}`, command: [], mode }),
+      });
+      if (!response.ok) throw new Error((await response.json()).message || `HTTP ${response.status}`);
+      const body = (await response.json()) as { sandbox?: SandboxRecordUi };
+      const sandbox = body.sandbox;
+      if (!sandbox) return;
+      if (template.command) initialCommands.current[sandbox.id] = `${template.command}\n`;
+      const taken = new Set(Object.values(positions.current).map((point) => `${point.x},${point.y}`));
+      let slot = 0;
+      while (taken.has(`${canvasSlot(slot).x},${canvasSlot(slot).y}`)) slot += 1;
+      positions.current[sandbox.id] = canvasSlot(slot);
+      setSelectedId(sandbox.id);
+      notify(template.command ? `${template.label} starting in its sandbox window` : `Shell ready (${mode})`);
+      await refresh();
+    } catch (error) {
+      notify(`Failed to start ${template.label}: ${error instanceof Error ? error.message : "unknown error"}`);
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const createSandbox = async () => {
     const parts = splitCommand(command);
@@ -1354,118 +1542,182 @@ function SandboxesView({ notify }: { notify: (message: string) => void }) {
   };
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-[22px] font-extrabold tracking-tight">Agent sandboxes</h1>
+            <h1 className="text-[22px] font-extrabold tracking-tight">Agent canvas</h1>
             <StatusPill tone={serviceUp ? "green" : "red"} dot>
               {serviceUp ? "Sandbox service live" : "Service offline"}
             </StatusPill>
           </div>
           <p className="mt-1 max-w-2xl text-[11px] leading-5 text-slate-500">
-            Run any agent inside an instrumented container. Every outbound connection, DNS lookup, process, and file write is
-            recorded; direct access to registered business systems raises a shadow-access alert.
+            Every window is an agent running inside its own monitored sandbox — drag to arrange, type to work. Connections, DNS
+            lookups, processes, and file writes are recorded; shadow access turns a window red.
           </p>
         </div>
-        <div className="flex items-center gap-2 text-[10px] text-slate-500">
-          <Bot size={13} className="text-blue-500" />
-          {sandboxes.filter((sandbox) => sandbox.status === "running").length} running · {sandboxes.length} total
+        <div className="flex flex-wrap items-center gap-2">
+          {(["observe", "enforce"] as const).map((value) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setMode(value)}
+              className={`rounded-lg px-3 py-1.5 text-[10px] font-bold ${
+                mode === value ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+              }`}
+            >
+              {value === "observe" ? "Observe only" : "Enforce (block direct access)"}
+            </button>
+          ))}
+          {SANDBOX_TEMPLATES.map((template) => (
+            <button
+              key={template.id}
+              type="button"
+              disabled={busy}
+              onClick={() => void createFromTemplate(template)}
+              className="button-primary"
+            >
+              <Plus size={13} />
+              {template.label}
+            </button>
+          ))}
         </div>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(360px,.9fr)_minmax(0,1.1fr)]">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_330px]">
+        <div className="flow-shell dot-grid relative h-[760px] min-h-[560px] overflow-hidden rounded-2xl border border-slate-200 bg-white/55 shadow-panel">
+          <ReactFlow
+            nodes={nodes}
+            onNodesChange={onNodesChange}
+            nodeTypes={canvasNodeTypes}
+            onNodeClick={(_, node) => setSelectedId(node.id)}
+            nodesConnectable={false}
+            zoomOnDoubleClick={false}
+            minZoom={0.25}
+            maxZoom={1.5}
+            proOptions={{ hideAttribution: true }}
+            fitView
+            fitViewOptions={{ padding: 0.1 }}
+          >
+            <Background color="#d7dce5" gap={18} size={1} />
+            <Controls showInteractive={false} />
+            <MiniMap pannable zoomable nodeColor={() => "#cbd5e1"} maskColor="rgba(248,250,252,.8)" />
+          </ReactFlow>
+          {sandboxes.length === 0 && (
+            <div className="pointer-events-none absolute inset-0 grid place-items-center">
+              <div className="max-w-sm text-center">
+                <div className="mx-auto grid h-10 w-10 place-items-center rounded-xl bg-blue-50 text-blue-600">
+                  <LayoutGrid size={18} />
+                </div>
+                <p className="mt-3 text-[13px] font-extrabold text-slate-700">Your agents will live here</p>
+                <p className="mt-1 text-[11px] leading-5 text-slate-500">
+                  Launch a Shell, Claude Code, or Codex above — each opens as a draggable window on this canvas, already
+                  inside its monitored sandbox.
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+
         <div className="space-y-4">
-          <Panel>
-            <SectionHeading icon={<Plus size={15} />} eyebrow="Launch" title="Run an agent in a sandbox" />
-            <div className="space-y-3 p-5">
-              <label className="block">
-                <span className="text-[9px] font-extrabold uppercase tracking-[.14em] text-slate-400">Name</span>
-                <input
-                  value={name}
-                  onChange={(event) => setName(event.target.value)}
-                  placeholder="migration-agent"
-                  className="field-input mt-1"
-                />
-              </label>
-              <label className="block">
-                <span className="text-[9px] font-extrabold uppercase tracking-[.14em] text-slate-400">Command (leave empty for an interactive workspace)</span>
-                <input
-                  value={command}
-                  onChange={(event) => setCommand(event.target.value)}
-                  placeholder="claude   ·   codex   ·   tsx real-agent.ts"
-                  className="field-input mt-1 font-mono"
-                />
-              </label>
-              <label className="block">
-                <span className="text-[9px] font-extrabold uppercase tracking-[.14em] text-slate-400">Env (KEY=VALUE per line)</span>
-                <textarea
-                  value={env}
-                  onChange={(event) => setEnv(event.target.value)}
-                  placeholder={"GEMINI_API_KEY=..."}
-                  rows={2}
-                  className="field-input mt-1 font-mono"
-                />
-              </label>
-              <label className="block">
-                <span className="text-[9px] font-extrabold uppercase tracking-[.14em] text-slate-400">Workspace source dir (optional, copied in)</span>
-                <input
-                  value={workspace}
-                  onChange={(event) => setWorkspace(event.target.value)}
-                  placeholder="./scripts"
-                  className="field-input mt-1 font-mono"
-                />
-              </label>
-              <label className="block">
-                <span className="text-[9px] font-extrabold uppercase tracking-[.14em] text-slate-400">Agent input (fed to stdin, optional)</span>
-                <textarea
-                  value={stdinText}
-                  onChange={(event) => setStdinText(event.target.value)}
-                  placeholder={"list unpaid invoices\nexit"}
-                  rows={2}
-                  className="field-input mt-1 font-mono"
-                />
-              </label>
-              <div className="flex items-center gap-2">
-                {(["observe", "enforce"] as const).map((value) => (
-                  <button
-                    key={value}
-                    type="button"
-                    onClick={() => setMode(value)}
-                    className={`rounded-lg px-3 py-1.5 text-[10px] font-bold ${
-                      mode === value ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                    }`}
-                  >
-                    {value === "observe" ? "Observe only" : "Enforce (block direct access)"}
-                  </button>
-                ))}
-                <button type="button" disabled={busy} onClick={() => void createSandbox()} className="button-primary ml-auto">
+          {selected ? (
+            <Panel className="overflow-hidden">
+              <SectionHeading
+                icon={<Activity size={15} />}
+                eyebrow={selected.id}
+                title={selected.name}
+                action={
+                  <div className="flex items-center gap-2">
+                    {alertCount > 0 && (
+                      <StatusPill tone="red">
+                        <AlertTriangle size={10} /> {alertCount}
+                      </StatusPill>
+                    )}
+                    {selected.status === "running" && (
+                      <button type="button" disabled={busy} onClick={() => void stopSandbox()} className="button-danger">
+                        <Pause size={12} />
+                        Stop
+                      </button>
+                    )}
+                    {selected.interactive && selected.status !== "running" && (
+                      <button type="button" disabled={busy} onClick={() => void restartSandbox()} className="button-primary">
+                        <RefreshCw size={12} />
+                        Restart
+                      </button>
+                    )}
+                    {selected.interactive && (
+                      <button type="button" disabled={busy} onClick={() => void deleteSandbox()} className="button-danger">
+                        <Trash2 size={12} />
+                        Delete
+                      </button>
+                    )}
+                  </div>
+                }
+              />
+              <div className="max-h-[420px] overflow-y-auto p-3">
+                {events.map((event) => renderTimelineEvent(event))}
+                {events.length === 0 && <p className="p-4 text-center text-[10px] text-slate-500">Events appear as the agent works.</p>}
+              </div>
+              <div className="border-t border-slate-100">
+                <p className="px-5 pt-3 text-[9px] font-extrabold uppercase tracking-[.14em] text-slate-400">Background output</p>
+                <pre className="max-h-[200px] overflow-y-auto whitespace-pre-wrap px-5 py-3 font-mono text-[9.5px] leading-5 text-slate-600">
+                  {logs.join("\n") || "One-shot commands (non-interactive runs) stream here."}
+                </pre>
+              </div>
+            </Panel>
+          ) : (
+            <Panel>
+              <SectionHeading icon={<Plus size={15} />} eyebrow="Advanced launch" title="Custom agent run" />
+              <div className="space-y-3 p-5">
+                <label className="block">
+                  <span className="text-[9px] font-extrabold uppercase tracking-[.14em] text-slate-400">Name</span>
+                  <input value={name} onChange={(event) => setName(event.target.value)} placeholder="migration-agent" className="field-input mt-1" />
+                </label>
+                <label className="block">
+                  <span className="text-[9px] font-extrabold uppercase tracking-[.14em] text-slate-400">Command (empty = interactive workspace)</span>
+                  <input
+                    value={command}
+                    onChange={(event) => setCommand(event.target.value)}
+                    placeholder="tsx real-agent.ts"
+                    className="field-input mt-1 font-mono"
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-[9px] font-extrabold uppercase tracking-[.14em] text-slate-400">Env (KEY=VALUE per line)</span>
+                  <textarea value={env} onChange={(event) => setEnv(event.target.value)} placeholder={"GEMINI_API_KEY=..."} rows={2} className="field-input mt-1 font-mono" />
+                </label>
+                <label className="block">
+                  <span className="text-[9px] font-extrabold uppercase tracking-[.14em] text-slate-400">Workspace source dir (copied in)</span>
+                  <input value={workspace} onChange={(event) => setWorkspace(event.target.value)} placeholder="./scripts" className="field-input mt-1 font-mono" />
+                </label>
+                <label className="block">
+                  <span className="text-[9px] font-extrabold uppercase tracking-[.14em] text-slate-400">Agent input (fed to stdin, one-shot runs)</span>
+                  <textarea value={stdinText} onChange={(event) => setStdinText(event.target.value)} placeholder={"list unpaid invoices\nexit"} rows={2} className="field-input mt-1 font-mono" />
+                </label>
+                <button type="button" disabled={busy} onClick={() => void createSandbox()} className="button-primary w-full justify-center">
                   <Zap size={13} />
                   Start sandbox
                 </button>
               </div>
-            </div>
-          </Panel>
+            </Panel>
+          )}
 
           <Panel className="overflow-hidden">
-            <SectionHeading icon={<Box size={15} />} eyebrow="Registry" title="Sandboxes" />
-            <div className="max-h-[340px] divide-y divide-slate-100 overflow-y-auto">
+            <SectionHeading icon={<Box size={15} />} eyebrow="Registry" title={`${sandboxes.filter((sandbox) => sandbox.status === "running").length} running · ${sandboxes.length} total`} />
+            <div className="max-h-[240px] divide-y divide-slate-100 overflow-y-auto">
               {sandboxes.map((sandbox) => (
                 <button
                   key={sandbox.id}
                   type="button"
                   onClick={() => setSelectedId(sandbox.id)}
-                  className={`flex w-full items-center justify-between gap-3 px-5 py-3 text-left ${
-                    selectedId === sandbox.id ? "bg-blue-50/60" : "hover:bg-slate-50"
-                  }`}
+                  className={`flex w-full items-center justify-between gap-3 px-5 py-3 text-left ${selectedId === sandbox.id ? "bg-blue-50/60" : "hover:bg-slate-50"}`}
                 >
                   <div className="min-w-0">
                     <p className="truncate text-[11px] font-bold text-slate-800">{sandbox.name}</p>
                     <p className="truncate font-mono text-[9px] text-slate-400">{sandbox.command.length ? sandbox.command.join(" ") : "interactive workspace"}</p>
                   </div>
                   <div className="flex shrink-0 items-center gap-1.5">
-                    {sandbox.interactive && <StatusPill tone="blue">workspace</StatusPill>}
-                    <StatusPill tone={sandbox.mode === "enforce" ? "blue" : "slate"}>{sandbox.mode}</StatusPill>
+                    {alertIds.includes(sandbox.id) && <StatusPill tone="red" dot>alert</StatusPill>}
                     <StatusPill tone={sandbox.status === "running" ? "green" : "slate"} dot>
                       {sandbox.status}
                     </StatusPill>
@@ -1473,96 +1725,11 @@ function SandboxesView({ notify }: { notify: (message: string) => void }) {
                 </button>
               ))}
               {sandboxes.length === 0 && (
-                <p className="p-7 text-center text-[10px] text-slate-500">No sandboxes yet. Launch one to see everything an agent does.</p>
+                <p className="p-6 text-center text-[10px] text-slate-500">Nothing yet — launch an agent from the toolbar.</p>
               )}
             </div>
           </Panel>
         </div>
-
-        <Panel className="overflow-hidden">
-          <SectionHeading
-            icon={<Activity size={15} />}
-            eyebrow={selected ? `${selected.id}` : "Inspector"}
-            title={selected ? selected.name : "No sandbox selected"}
-            action={
-              selected ? (
-                <div className="flex items-center gap-2">
-                  {alertCount > 0 && (
-                    <StatusPill tone="red">
-                      <AlertTriangle size={10} /> {alertCount} alert{alertCount === 1 ? "" : "s"}
-                    </StatusPill>
-                  )}
-                  {selected.status === "running" && (
-                    <button type="button" disabled={busy} onClick={() => void stopSandbox()} className="button-danger">
-                      <Pause size={12} />
-                      Stop
-                    </button>
-                  )}
-                  {selected.interactive && selected.status !== "running" && (
-                    <button type="button" disabled={busy} onClick={() => void restartSandbox()} className="button-primary">
-                      <RefreshCw size={12} />
-                      Restart
-                    </button>
-                  )}
-                  {selected.interactive && (
-                    <button type="button" disabled={busy} onClick={() => void deleteSandbox()} className="button-danger">
-                      <Trash2 size={12} />
-                      Delete
-                    </button>
-                  )}
-                </div>
-              ) : undefined
-            }
-          />
-          {selected?.interactive && selected.status === "running" ? (
-            <div className="space-y-3 p-4">
-              <div className="flex items-center justify-between">
-                <p className="text-[9px] font-extrabold uppercase tracking-[.14em] text-slate-400">
-                  Terminal — run your agents here (claude, codex, tsx …)
-                </p>
-                <StatusPill tone="green" dot>live</StatusPill>
-              </div>
-              <SandboxTerminal
-                key={selected.id}
-                sandboxId={selected.id}
-                onClosed={() => void refresh()}
-              />
-              <div className="grid gap-0 lg:grid-cols-2">
-                <div className="max-h-[320px] overflow-y-auto rounded-xl border border-slate-100">
-                  <p className="px-4 pt-3 text-[9px] font-extrabold uppercase tracking-[.14em] text-slate-400">Observed activity</p>
-                  <div className="p-3">
-                    {events.map((event) => renderTimelineEvent(event))}
-                    {events.length === 0 && <p className="p-4 text-center text-[10px] text-slate-500">Events appear as you work in the terminal.</p>}
-                  </div>
-                </div>
-                <div className="max-h-[320px] overflow-y-auto rounded-xl border border-slate-100">
-                  <p className="px-4 pt-3 text-[9px] font-extrabold uppercase tracking-[.14em] text-slate-400">Background output</p>
-                  <pre className="whitespace-pre-wrap px-4 py-3 font-mono text-[9.5px] leading-5 text-slate-600">
-                    {logs.join("\n") || "One-shot commands (non-interactive runs) stream here."}
-                  </pre>
-                </div>
-              </div>
-            </div>
-          ) : selected ? (
-            <div className="grid gap-0 lg:grid-cols-2">
-              <div className="max-h-[560px] overflow-y-auto border-b border-slate-100 lg:border-b-0 lg:border-r">
-                <p className="px-5 pt-4 text-[9px] font-extrabold uppercase tracking-[.14em] text-slate-400">Observed activity</p>
-                <div className="p-3">
-                  {events.map((event) => renderTimelineEvent(event))}
-                  {events.length === 0 && <p className="p-5 text-center text-[10px] text-slate-500">Events appear as the agent works.</p>}
-                </div>
-              </div>
-              <div className="flex max-h-[560px] flex-col">
-                <p className="px-5 pt-4 text-[9px] font-extrabold uppercase tracking-[.14em] text-slate-400">Live output</p>
-                <pre className="flex-1 overflow-y-auto whitespace-pre-wrap px-5 py-3 font-mono text-[9.5px] leading-5 text-slate-600">
-                  {logs.join("\n") || "Waiting for agent output…"}
-                </pre>
-              </div>
-            </div>
-          ) : (
-            <p className="p-7 text-center text-[10px] text-slate-500">Select a sandbox to inspect everything it did.</p>
-          )}
-        </Panel>
       </div>
     </div>
   );

@@ -1,0 +1,98 @@
+npm notice run sentinelgate@0.1.0 dev:web
+npm notice run turbo run dev --filter=web
+
+   • turbo 2.11.10
+   • Packages in scope: web
+   • Running dev in 1 package
+   • Remote caching disabled, using shared worktree cache
+
+web:dev: cache bypass, force executing 922bdda06061ec5e
+web:dev: npm notice run web@0.1.0 dev
+web:dev: npm notice run next dev -p 3000
+web:dev:    ▲ Next.js 15.5.28
+web:dev:    - Local:        http://localhost:3000
+web:dev:    - Network:      http://192.168.31.133:3000
+web:dev: 
+web:dev:  ✓ Starting...
+web:dev:  ✓ Ready in 2.5s
+web:dev:  ○ Compiling / ...
+web:dev:  ✓ Compiled / in 1212ms (955 modules)
+web:dev:  GET / 200 in 1594ms
+web:dev:  ✓ Compiled in 88ms (431 modules)
+web:dev:  ✓ Compiled in 581ms (955 modules)
+web:dev:  GET / 200 in 103ms
+web:dev:  ✓ Compiled in 671ms (955 modules)
+web:dev:  GET / 200 in 124ms
+web:dev:  ✓ Compiled in 451ms (957 modules)
+web:dev:  GET / 200 in 48ms
+web:dev:  ✓ Compiled in 432ms (957 modules)
+web:dev:  GET / 200 in 44ms
+web:dev:  ✓ Compiled in 539ms (957 modules)
+web:dev:  GET / 200 in 85ms
+web:dev:  ⨯ Error: Could not find the module "/home/kaushi/Projects/DEVHOST-sandbox/node_modules/next/dist/next-devtools/userspace/app/segment-explorer-node.js#SegmentViewNode" in the React Client Manifest. This is probably a bug in the React Server Components bundler.
+web:dev:     at stringify (<anonymous>) {
+web:dev:   digest: '2971376767'
+web:dev: }
+web:dev:  ⨯ Error: Could not find the module "/home/kaushi/Projects/DEVHOST-sandbox/node_modules/next/dist/next-devtools/userspace/app/segment-explorer-node.js#SegmentViewNode" in the React Client Manifest. This is probably a bug in the React Server Components bundler.
+web:dev:     at stringify (<anonymous>)
+web:dev:     at stringify (<anonymous>)
+web:dev:     at stringify (<anonymous>) {
+web:dev:   digest: '3046127001'
+web:dev: }
+web:dev:  ⨯ Error: Could not find the module "/home/kaushi/Projects/DEVHOST-sandbox/node_modules/next/dist/next-devtools/userspace/app/segment-explorer-node.js#SegmentViewNode" in the React Client Manifest. This is probably a bug in the React Server Components bundler.
+web:dev:     at stringify (<anonymous>)
+web:dev:     at stringify (<anonymous>) {
+web:dev:   digest: '2690886202'
+web:dev: }
+web:dev:  ⨯ Error: Could not find the module "/home/kaushi/Projects/DEVHOST-sandbox/node_modules/next/dist/next-devtools/userspace/app/segment-explorer-node.js#SegmentViewNode" in the React Client Manifest. This is probably a bug in the React Server Components bundler.
+web:dev:     at stringify (<anonymous>)
+web:dev:     at stringify (<anonymous>) {
+web:dev:   digest: '2690886202'
+web:dev: }
+web:dev:  ⨯ Error: Could not find the module "/home/kaushi/Projects/DEVHOST-sandbox/node_modules/next/dist/next-devtools/userspace/app/segment-explorer-node.js#SegmentViewNode" in the React Client Manifest. This is probably a bug in the React Server Components bundler.
+web:dev:     at stringify (<anonymous>)
+web:dev:     at stringify (<anonymous>) {
+web:dev:   digest: '2690886202'
+web:dev: }
+web:dev:  ⨯ Error: Could not find the module "/home/kaushi/Projects/DEVHOST-sandbox/node_modules/next/dist/next-devtools/userspace/app/segment-explorer-node.js#SegmentViewNode" in the React Client Manifest. This is probably a bug in the React Server Components bundler.
+web:dev:     at stringify (<anonymous>)
+web:dev:     at stringify (<anonymous>) {
+web:dev:   digest: '2690886202'
+web:dev: }
+web:dev:  ⨯ Error: Could not find the module "/home/kaushi/Projects/DEVHOST-sandbox/node_modules/next/dist/next-devtools/userspace/app/segment-explorer-node.js#SegmentViewNode" in the React Client Manifest. This is probably a bug in the React Server Components bundler.
+web:dev:     at stringify (<anonymous>)
+web:dev:     at stringify (<anonymous>) {
+web:dev:   digest: '2690886202'
+web:dev: }
+web:dev:  ⨯ Error: Could not find the module "/home/kaushi/Projects/DEVHOST-sandbox/node_modules/next/dist/next-devtools/userspace/app/segment-explorer-node.js#SegmentViewNode" in the React Client Manifest. This is probably a bug in the React Server Components bundler.
+web:dev:     at stringify (<anonymous>) {
+web:dev:   digest: '2971376767'
+web:dev: }
+web:dev:  ⨯ Error: Could not find the module "/home/kaushi/Projects/DEVHOST-sandbox/node_modules/next/dist/next-devtools/userspace/app/segment-explorer-node.js#SegmentViewNode" in the React Client Manifest. This is probably a bug in the React Server Components bundler.
+web:dev:     at stringify (<anonymous>) {
+web:dev:   digest: '2971376767'
+web:dev: }
+web:dev:  ⨯ [TypeError: __webpack_modules__[moduleId] is not a function] {
+web:dev:   digest: '467020245'
+web:dev: }
+web:dev:  ⨯ Error: Could not find the module "/home/kaushi/Projects/DEVHOST-sandbox/node_modules/next/dist/next-devtools/userspace/app/segment-explorer-node.js#SegmentViewNode" in the React Client Manifest. This is probably a bug in the React Server Components bundler.
+web:dev:     at stringify (<anonymous>) {
+web:dev:   digest: '2971376767'
+web:dev: }
+web:dev: [TypeError: __webpack_modules__[moduleId] is not a function]
+web:dev:  ⨯ [TypeError: __webpack_modules__[moduleId] is not a function]
+web:dev:  ⨯ [TypeError: __webpack_modules__[moduleId] is not a function] {
+web:dev:   page: '/'
+web:dev: }
+web:dev:  ○ Compiling /_error ...
+web:dev:  GET / 500 in 3049ms
+web:dev:  ✓ Compiled /_error in 569ms (1306 modules)
+web:dev:  GET / 200 in 464ms
+web:dev:  GET / 200 in 14ms
+web:dev:  GET / 200 in 240ms
+web:dev:  GET / 200 in 131ms
+
+ Tasks:    1 successful, 1 total
+Cached:    0 cached, 1 total
+  Time:    31m49.307s 
+

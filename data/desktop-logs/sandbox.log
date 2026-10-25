@@ -1,0 +1,15 @@
+npm notice run sentinelgate@0.1.0 dev:sandbox
+npm notice run turbo run dev --filter=sandbox
+
+   • turbo 2.11.10
+   • Packages in scope: sandbox
+   • Running dev in 1 package
+   • Remote caching disabled, using shared worktree cache
+
+sandbox:dev: cache bypass, force executing 9e91fc867bb40bcc
+sandbox:dev: npm notice run sandbox@0.1.0 dev
+sandbox:dev: npm notice run tsx watch src/index.ts
+sandbox:dev: [sandbox] Aegis sandbox service listening on http://127.0.0.1:8788
+sandbox:dev: [sandbox] gateway for agents: http://host.docker.internal:8787/api/v1
+sandbox:dev: [sandbox] gateway push failed (/sandboxes): fetch failed
+sandbox:dev: [sandbox] adopted 1 running sandbox container(s)
