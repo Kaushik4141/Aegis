@@ -43,8 +43,9 @@ sandbox:dev: Error: listen EADDRINUSE: address already in use :::8788
 sandbox:dev:     at Server.setupListenHandle [as _listen2] (node:net:2328:16)
 sandbox:dev:     at listenInCluster (node:net:2437:12)
 sandbox:dev:     at Server.listen (node:net:2562:7)
-sandbox:dev:     at serve (file:///home/kaushi/Projects/DEVHOST-sandbox/apps/sandbox/node_modules/@hono/node-server/dist/index.mjs:651:10)
-sandbox:dev:     at <anonymous> (/home/kaushi/Projects/DEVHOST-sandbox/apps/sandbox/src/index.ts:80:16)
+sandbox:dev:     at serve (file:sandbox:dev: 9:00:42 PM [tsx] change in ./src/orchestrator.ts Process hasn't exited. Killing process...
+sandbox:dev: 9:00:56 PM [tsx] change in ./src/orchestrator.ts Process hasn't exited. Killing process...
+6)
 sandbox:dev: Emitted 'error' event on Server instance at:
 sandbox:dev:     at emitErrorNT (node:net:2416:8)
 sandbox:dev:     at process.processTicksAndRejections (node:internal/process/task_queues:90:21) {
@@ -56,3 +57,16 @@ sandbox:dev:   port: 8788
 sandbox:dev: }
 sandbox:dev: 
 sandbox:dev: Node.js v26.8.1
+Shutting down Turborepo tasks...
+sandbox:dev: npm error Lifecycle script `dev` failed with error:
+sandbox:dev: npm error code 130
+sandbox:dev: npm error path /home/kaushi/Projects/DEVHOST-sandbox/apps/sandbox
+sandbox:dev: npm error workspace sandbox@0.1.0
+sandbox:dev: npm error location /home/kaushi/Projects/DEVHOST-sandbox/apps/sandbox
+sandbox:dev: npm error command failed
+sandbox:dev: npm error command sh -c tsx watch src/index.ts
+
+ Tasks:    0 successful, 1 total
+Cached:    0 cached, 1 total
+  Time:    28m43.343s 
+

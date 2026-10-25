@@ -310,6 +310,7 @@ async function relayPort(port) {
 function pollListeners() {
   execFile("ss", ["-tlnp"], (error, stdout) => {
     if (error) return;
+    const alive = new Set();
     for (const line of stdout.split("\n").slice(1)) {
       const tokens = line.trim().split(/\s+/);
       if (tokens.length < 5) continue;
@@ -321,11 +322,21 @@ function pollListeners() {
       const localHost = localRaw.slice(0, lastColon).replace(/^\[|\]$/g, "");
       if (localHost !== "127.0.0.1" && localHost !== "::1" && localHost !== "*") continue;
       const port = Number(localRaw.slice(lastColon + 1));
-      if (!port || port === 53 || seenListeners.has(port)) continue;
+      if (!port || port === 53) continue;
+      alive.add(port);
+      if (seenListeners.has(port)) continue;
       seenListeners.add(port);
       void relayPort(port);
       const nameMatch = tokens.slice(4).join(" ").match(/\(\("([^"]+)"/);
       emit("port_listen", { port, process: nameMatch ? nameMatch[1] : undefined, local: localHost });
+    }
+    // A listener that died frees its port: the service can drop the forwarder
+    // (fixed-port CLIs like codex:1455 depend on this to stay reusable).
+    for (const port of [...seenListeners]) {
+      if (!alive.has(port)) {
+        seenListeners.delete(port);
+        emit("port_close", { port });
+      }
     }
   });
 }

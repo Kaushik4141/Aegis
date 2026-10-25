@@ -26,9 +26,13 @@ interface SandboxRuntime {
   pollTimer?: NodeJS.Timeout;
   /** Home-profile env (PATH additions, ssh-agent socket) applied to exec shells. */
   profileEnv?: Record<string, string>;
-  /** Loopback ports inside the container, forwarded from laptop localhost. */
-  forwarders: Map<number, net.Server>;
   containerIp?: string;
+}
+
+/** One laptop-side forwarder per port; the newest login attempt wins it. */
+interface PortForward {
+  sandboxId: string;
+  server: net.Server;
 }
 
 /**
@@ -147,7 +151,7 @@ export class Orchestrator {
           createdAt: now,
           updatedAt: now,
         };
-        const runtime: SandboxRuntime = { record, logs: [], events: [], forwarders: new Map() };
+        const runtime: SandboxRuntime = { record, logs: [], events: [] };
         if (found.home && !process.env.DOCKER_HOST) runtime.profileEnv = (await homeProfileMounts()).env;
         this.runtimes.set(found.id, runtime);
         if (found.running) runtime.pollTimer = setInterval(() => void this.watch(found.id), 5000);
@@ -178,11 +182,29 @@ export class Orchestrator {
    * Agent CLIs run their OAuth callback servers on loopback inside the
    * container; the laptop browser cannot reach them. Forward laptop
    * 127.0.0.1:<port> -> container:<port> so the browser round-trip completes
-   * (the same trick VS Code port-forwarding pulls).
+   * (the same trick VS Code port-forwarding pulls). Fixed-port CLIs (codex
+   * uses 1455) collide across sandboxes, so the registry is service-wide and
+   * the latest listener steals the port — the login you're doing right now
+   * is the one that has to work.
    */
+  private readonly portForwards = new Map<number, PortForward>();
+
+  private releaseForward(port: number, reason: string): void {
+    const forward = this.portForwards.get(port);
+    if (!forward) return;
+    this.portForwards.delete(port);
+    forward.server.close(() => undefined);
+    console.log(`[sandbox] released forwarder :${port} (${reason})`);
+  }
+
   private async ensureForwarder(id: string, port: number): Promise<void> {
     const runtime = this.runtimes.get(id);
-    if (!runtime || runtime.forwarders.has(port)) return;
+    if (!runtime) return;
+    const existing = this.portForwards.get(port);
+    if (existing) {
+      if (existing.sandboxId === id) return;
+      this.releaseForward(port, `superseded by sandbox ${id}`);
+    }
     runtime.containerIp ||= (await containerIp(id)) || undefined;
     if (!runtime.containerIp) {
       console.warn(`[sandbox] no container IP for ${id}; cannot forward :${port}`);
@@ -199,19 +221,17 @@ export class Orchestrator {
     });
     server.on("error", (error) => {
       console.warn(`[sandbox] forwarder :${port} for ${id} failed: ${error.message}`);
-      runtime.forwarders.delete(port);
+      this.releaseForward(port, "error");
     });
     server.listen(port, "127.0.0.1", () => {
       console.log(`[sandbox] forwarding laptop:${port} -> container ${id}:${port}`);
     });
-    runtime.forwarders.set(port, server);
+    this.portForwards.set(port, { sandboxId: id, server });
   }
 
-  private closeForwarders(runtime: SandboxRuntime): void {
-    for (const [port, server] of runtime.forwarders) {
-      server.close(() => undefined);
-      runtime.forwarders.delete(port);
-      console.log(`[sandbox] closed forwarder :${port}`);
+  private closeForwardersFor(id: string, reason: string): void {
+    for (const [port, forward] of [...this.portForwards]) {
+      if (forward.sandboxId === id) this.releaseForward(port, reason);
     }
   }
 
@@ -234,6 +254,10 @@ export class Orchestrator {
       }
       if (event.type === "port_listen" && typeof event.detail.port === "number") {
         void this.ensureForwarder(id, event.detail.port);
+      }
+      if (event.type === "port_close" && typeof event.detail.port === "number") {
+        const forward = this.portForwards.get(event.detail.port);
+        if (forward?.sandboxId === id) this.releaseForward(event.detail.port, "listener closed");
       }
       runtime.events.push(event);
       if (runtime.events.length > EVENT_RING) runtime.events.splice(0, runtime.events.length - EVENT_RING);
@@ -298,7 +322,7 @@ export class Orchestrator {
       createdAt: now,
       updatedAt: now,
     };
-    const runtime: SandboxRuntime = { record, logs: [], events: [], forwarders: new Map() };
+    const runtime: SandboxRuntime = { record, logs: [], events: [] };
     this.runtimes.set(id, runtime);
 
     // Home-profile mounts are local-daemon only (paths live on the laptop).
@@ -361,7 +385,7 @@ export class Orchestrator {
     const { agent } = imageName(id);
     if (await isRunning(agent)) return;
     clearInterval(runtime.pollTimer);
-    this.closeForwarders(runtime);
+    this.closeForwardersFor(id, "sandbox stopped");
     if (runtime.record.interactive) {
       // Interactive workspaces keep their containers for restart; the report
       // is only a snapshot, never a teardown.
@@ -386,7 +410,7 @@ export class Orchestrator {
       runtime.record.exitCode = await exitCode(`aegis-sb-${id}`).catch(() => undefined);
     }
     runtime.record.updatedAt = new Date().toISOString();
-    this.closeForwarders(runtime);
+    this.closeForwardersFor(id, "sandbox stopped");
     if (runtime.record.interactive) {
       await stopSandboxKeep(id);
       await this.gateway.announceSandbox({ id, name: runtime.record.name, command: runtime.record.command, mode: runtime.record.mode, status: "stopped" });
@@ -412,7 +436,7 @@ export class Orchestrator {
     const runtime = this.runtimes.get(id);
     if (!runtime) return false;
     if (runtime.pollTimer) clearInterval(runtime.pollTimer);
-    this.closeForwarders(runtime);
+    this.closeForwardersFor(id, "sandbox stopped");
     const filesystem = await stopSandbox(id);
     const eventCounts: Record<string, number> = {};
     for (const event of runtime.events) eventCounts[event.type] = (eventCounts[event.type] || 0) + 1;
@@ -427,7 +451,7 @@ export class Orchestrator {
   private async finalize(id: string, status: "exited" | "stopped"): Promise<void> {
     const runtime = this.runtimes.get(id);
     if (!runtime) return;
-    this.closeForwarders(runtime);
+    this.closeForwardersFor(id, "sandbox stopped");
     const filesystem = await stopSandbox(id);
     const eventCounts: Record<string, number> = {};
     for (const event of runtime.events) eventCounts[event.type] = (eventCounts[event.type] || 0) + 1;

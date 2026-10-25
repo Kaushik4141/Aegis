@@ -404,7 +404,10 @@ container create), and the sandbox service forwards
 terminal (links are clickable; Ctrl/Cmd+Shift+C copies the selection) — it
 opens on your laptop and the browser round-trip completes back into the
 sandbox. Forwarders bind to laptop localhost only and close with the
-sandbox.
+sandbox. Fixed-port CLIs (codex uses 1455) collide across simultaneous
+logins, so forwarders live in a service-wide registry where the latest
+listener wins the port, and a forwarder is released the moment its
+in-container listener dies.
 
 ## Optional production integrations
 
