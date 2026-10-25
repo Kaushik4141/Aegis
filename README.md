@@ -392,6 +392,20 @@ while events, alerts, and terminals keep flowing through your gateway.
 └────────────────────────────────────────────────────────────┘
 ```
 
+## Agent login (OAuth) from inside sandboxes
+
+CLIs like `claude`, `codex`, and `agy` authenticate by starting a callback
+server on `127.0.0.1:<random>` inside the sandbox and opening the provider
+in your browser — which normally can't reach back in. Aegis closes the loop
+automatically: netwatch detects every new loopback listener, relays it to
+the sandbox's bridge IP (DNAT with `route_localnet`, set via `--sysctl` at
+container create), and the sandbox service forwards
+`laptop:127.0.0.1:<port> -> container:<port>`. Click the auth URL in a
+terminal (links are clickable; Ctrl/Cmd+Shift+C copies the selection) — it
+opens on your laptop and the browser round-trip completes back into the
+sandbox. Forwarders bind to laptop localhost only and close with the
+sandbox.
+
 ## Optional production integrations
 
 Set these environment variables when deploying:

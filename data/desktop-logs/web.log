@@ -6,7 +6,7 @@ npm notice run turbo run dev --filter=web
    • Running dev in 1 package
    • Remote caching disabled, using shared worktree cache
 
-web:dev: cache bypass, force executing dbc3237b5681950b
+web:dev: cache bypass, force executing 485d7a20cc768202
 web:dev: npm notice run web@0.1.0 dev
 web:dev: npm notice run next dev -p 3000
 web:dev:    ▲ Next.js 15.5.28
@@ -14,50 +14,14 @@ web:dev:    - Local:        http://localhost:3000
 web:dev:    - Network:      http://192.168.31.133:3000
 web:dev: 
 web:dev:  ✓ Starting...
-web:dev:  ✓ Ready in 1769ms
+web:dev:  ✓ Ready in 2.3s
 web:dev:  ○ Compiling / ...
-web:dev:  ✓ Compiled / in 1381ms (957 modules)
-web:dev:  GET / 200 in 1835ms
-web:dev:  ✓ Compiled in 156ms (432 modules)
-web:dev:  GET / 200 in 82ms
-web:dev:  ⚠ Cross origin request detected from 127.0.0.1 to /_next/* resource. In a future major version of Next.js, you will need to explicitly configure "allowedDevOrigins" in next.config to allow this.
-web:dev: Read more: https://nextjs.org/docs/app/api-reference/config/next-config-js/allowedDevOrigins
-web:dev:  GET / 200 in 95ms
-web:dev:  GET / 200 in 115ms
-web:dev:  GET / 200 in 99ms
-web:dev:  GET / 200 in 122ms
-web:dev: Failed to proxy http://127.0.0.1:8788/sandboxes Error: connect ECONNREFUSED 127.0.0.1:8788
-web:dev:     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:8788) {
-web:dev:   errno: -111,
-web:dev:   code: 'ECONNREFUSED',
-web:dev:   syscall: 'connect',
-web:dev:   address: '127.0.0.1',
-web:dev:   port: 8788
-web:dev: }
-web:dev: Error: connect ECONNREFUSED 127.0.0.1:8788
-web:dev:     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:8788) {
-web:dev:   errno: -111,
-web:dev:   code: 'ECONNREFUSED',
-web:dev:   syscall: 'connect',
-web:dev:   address: '127.0.0.1',
-web:dev:   port: 8788
-web:dev: }
-web:dev: Failed to proxy http://127.0.0.1:8788/sandboxes Error: connect ECONNREFUSED 127.0.0.1:8788
-web:dev:     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:8788) {
-web:dev:   errno: -111,
-web:dev:   code: 'ECONNREFUSED',
-web:dev:   syscall: 'connect',
-web:dev:   address: '127.0.0.1',
-web:dev:   port: 8788
-web:dev: }
-web:dev: Error: connect ECONNREFUSED 127.0.0.1:8788
-web:dev:     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:8788) {
-web:dev:   errno: -111,
-web:dev:   code: 'ECONNREFUSED',
-web:dev:   syscall: 'connect',
-web:dev:   address: '127.0.0.1',
-web:dev:   port: 8788
-web:dev: }
+web:dev:  ✓ Compiled / in 1339ms (957 modules)
+web:dev:  GET / 200 in 1832ms
+web:dev:  ✓ Compiled in 171ms (432 modules)
+web:dev:  ✓ Compiled in 146ms (418 modules)
+web:dev:  ✓ Compiled in 653ms (959 modules)
+web:dev:  GET / 200 in 112ms
 web:dev: Failed to proxy http://127.0.0.1:8788/sandboxes Error: connect ECONNREFUSED 127.0.0.1:8788
 web:dev:     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:8788) {
 web:dev:   errno: -111,
@@ -123,13 +87,9 @@ web:dev:   address: '127.0.0.1',
 web:dev:   port: 8788
 web:dev: }
 web:dev:  ○ Compiling /_error ...
-web:dev:  ✓ Compiled /_error in 748ms (1306 modules)
-web:dev:  GET / 200 in 583ms
-web:dev:  GET / 200 in 584ms
-web:dev:  GET / 200 in 582ms
-web:dev:  GET / 200 in 48ms
-web:dev:  GET / 200 in 48ms
-web:dev:  GET / 200 in 47ms
+web:dev:  ✓ Compiled /_error in 576ms (1308 modules)
+web:dev:  GET / 200 in 403ms
+web:dev:  GET / 200 in 14ms
 web:dev: Failed to proxy http://127.0.0.1:8788/sandboxes Error: connect ECONNREFUSED 127.0.0.1:8788
 web:dev:     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:8788) {
 web:dev:   errno: -111,
@@ -146,78 +106,10 @@ web:dev:   syscall: 'connect',
 web:dev:   address: '127.0.0.1',
 web:dev:   port: 8788
 web:dev: }
-web:dev: Failed to proxy http://127.0.0.1:8788/sandboxes Error: connect ECONNREFUSED 127.0.0.1:8788
-web:dev:     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:8788) {
-web:dev:   errno: -111,
-web:dev:   code: 'ECONNREFUSED',
-web:dev:   syscall: 'connect',
-web:dev:   address: '127.0.0.1',
-web:dev:   port: 8788
-web:dev: }
-web:dev: Error: connect ECONNREFUSED 127.0.0.1:8788
-web:dev:     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:8788) {
-web:dev:   errno: -111,
-web:dev:   code: 'ECONNREFUSED',
-web:dev:   syscall: 'connect',
-web:dev:   address: '127.0.0.1',
-web:dev:   port: 8788
-web:dev: }
-web:dev: Failed to proxy http://127.0.0.1:8788/sandboxes Error: connect ECONNREFUSED 127.0.0.1:8788
-web:dev:     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:8788) {
-web:dev:   errno: -111,
-web:dev:   code: 'ECONNREFUSED',
-web:dev:   syscall: 'connect',
-web:dev:   address: '127.0.0.1',
-web:dev:   port: 8788
-web:dev: }
-web:dev: Error: connect ECONNREFUSED 127.0.0.1:8788
-web:dev:     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:8788) {
-web:dev:   errno: -111,
-web:dev:   code: 'ECONNREFUSED',
-web:dev:   syscall: 'connect',
-web:dev:   address: '127.0.0.1',
-web:dev:   port: 8788
-web:dev: }
-web:dev: Failed to proxy http://127.0.0.1:8788/sandboxes Error: connect ECONNREFUSED 127.0.0.1:8788
-web:dev:     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:8788) {
-web:dev:   errno: -111,
-web:dev:   code: 'ECONNREFUSED',
-web:dev:   syscall: 'connect',
-web:dev:   address: '127.0.0.1',
-web:dev:   port: 8788
-web:dev: }
-web:dev: Error: connect ECONNREFUSED 127.0.0.1:8788
-web:dev:     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:8788) {
-web:dev:   errno: -111,
-web:dev:   code: 'ECONNREFUSED',
-web:dev:   syscall: 'connect',
-web:dev:   address: '127.0.0.1',
-web:dev:   port: 8788
-web:dev: }
-web:dev:  ✓ Compiled in 730ms (1320 modules)
-web:dev:  GET / 200 in 99ms
-web:dev:  GET / 200 in 30ms
-web:dev:  GET / 200 in 16ms
-web:dev:  ✓ Compiled in 647ms (1219 modules)
-web:dev:  GET / 200 in 138ms
-web:dev:  GET / 200 in 18ms
-web:dev:  GET / 200 in 18ms
-web:dev: Failed to proxy http://127.0.0.1:8788/sandboxes Error: connect ECONNREFUSED 127.0.0.1:8788
-web:dev:     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:8788) {
-web:dev:   errno: -111,
-web:dev:   code: 'ECONNREFUSED',
-web:dev:   syscall: 'connect',
-web:dev:   address: '127.0.0.1',
-web:dev:   port: 8788
-web:dev: }
-web:dev: Error: connect ECONNREFUSED 127.0.0.1:8788
-web:dev:     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:8788) {
-web:dev:   errno: -111,
-web:dev:   code: 'ECONNREFUSED',
-web:dev:   syscall: 'connect',
-web:dev:   address: '127.0.0.1',
-web:dev:   port: 8788
-web:dev: }
+web:dev:  ✓ Compiled in 565ms (1322 modules)
+web:dev:  GET / 200 in 87ms
+web:dev:  ✓ Compiled in 443ms (1221 modules)
+web:dev:  GET / 200 in 94ms
 web:dev: Failed to proxy http://127.0.0.1:8788/sandboxes Error: connect ECONNREFUSED 127.0.0.1:8788
 web:dev:     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:8788) {
 web:dev:   errno: -111,
@@ -298,6 +190,7 @@ web:dev:   syscall: 'connect',
 web:dev:   address: '127.0.0.1',
 web:dev:   port: 8788
 web:dev: }
+web:dev:  ✓ Compiled /_error in 246ms (1308 modules)
 web:dev: Failed to proxy http://127.0.0.1:8788/sandboxes Error: connect ECONNREFUSED 127.0.0.1:8788
 web:dev:     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:8788) {
 web:dev:   errno: -111,
@@ -330,4 +223,99 @@ web:dev:   syscall: 'connect',
 web:dev:   address: '127.0.0.1',
 web:dev:   port: 8788
 web:dev: }
-web:dev:  ✓ Compiled /_error in 307ms (1306 modules)
+web:dev: Failed to proxy http://127.0.0.1:8788/sandboxes Error: connect ECONNREFUSED 127.0.0.1:8788
+web:dev:     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:8788) {
+web:dev:   errno: -111,
+web:dev:   code: 'ECONNREFUSED',
+web:dev:   syscall: 'connect',
+web:dev:   address: '127.0.0.1',
+web:dev:   port: 8788
+web:dev: }
+web:dev: Error: connect ECONNREFUSED 127.0.0.1:8788
+web:dev:     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:8788) {
+web:dev:   errno: -111,
+web:dev:   code: 'ECONNREFUSED',
+web:dev:   syscall: 'connect',
+web:dev:   address: '127.0.0.1',
+web:dev:   port: 8788
+web:dev: }
+web:dev: Failed to proxy http://127.0.0.1:8788/sandboxes Error: connect ECONNREFUSED 127.0.0.1:8788
+web:dev:     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:8788) {
+web:dev:   errno: -111,
+web:dev:   code: 'ECONNREFUSED',
+web:dev:   syscall: 'connect',
+web:dev:   address: '127.0.0.1',
+web:dev:   port: 8788
+web:dev: }
+web:dev: Error: connect ECONNREFUSED 127.0.0.1:8788
+web:dev:     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:8788) {
+web:dev:   errno: -111,
+web:dev:   code: 'ECONNREFUSED',
+web:dev:   syscall: 'connect',
+web:dev:   address: '127.0.0.1',
+web:dev:   port: 8788
+web:dev: }
+web:dev: Failed to proxy http://127.0.0.1:8788/sandboxes Error: connect ECONNREFUSED 127.0.0.1:8788
+web:dev:     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:8788) {
+web:dev:   errno: -111,
+web:dev:   code: 'ECONNREFUSED',
+web:dev:   syscall: 'connect',
+web:dev:   address: '127.0.0.1',
+web:dev:   port: 8788
+web:dev: }
+web:dev: Error: connect ECONNREFUSED 127.0.0.1:8788
+web:dev:     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:8788) {
+web:dev:   errno: -111,
+web:dev:   code: 'ECONNREFUSED',
+web:dev:   syscall: 'connect',
+web:dev:   address: '127.0.0.1',
+web:dev:   port: 8788
+web:dev: }
+web:dev: Failed to proxy http://127.0.0.1:8788/sandboxes Error: connect ECONNREFUSED 127.0.0.1:8788
+web:dev:     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:8788) {
+web:dev:   errno: -111,
+web:dev:   code: 'ECONNREFUSED',
+web:dev:   syscall: 'connect',
+web:dev:   address: '127.0.0.1',
+web:dev:   port: 8788
+web:dev: }
+web:dev: Error: connect ECONNREFUSED 127.0.0.1:8788
+web:dev:     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:8788) {
+web:dev:   errno: -111,
+web:dev:   code: 'ECONNREFUSED',
+web:dev:   syscall: 'connect',
+web:dev:   address: '127.0.0.1',
+web:dev:   port: 8788
+web:dev: }
+web:dev: Failed to proxy http://127.0.0.1:8788/sandboxes Error: connect ECONNREFUSED 127.0.0.1:8788
+web:dev:     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:8788) {
+web:dev:   errno: -111,
+web:dev:   code: 'ECONNREFUSED',
+web:dev:   syscall: 'connect',
+web:dev:   address: '127.0.0.1',
+web:dev:   port: 8788
+web:dev: }
+web:dev: Error: connect ECONNREFUSED 127.0.0.1:8788
+web:dev:     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:8788) {
+web:dev:   errno: -111,
+web:dev:   code: 'ECONNREFUSED',
+web:dev:   syscall: 'connect',
+web:dev:   address: '127.0.0.1',
+web:dev:   port: 8788
+web:dev: }
+web:dev: Failed to proxy http://127.0.0.1:8788/sandboxes Error: connect ECONNREFUSED 127.0.0.1:8788
+web:dev:     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:8788) {
+web:dev:   errno: -111,
+web:dev:   code: 'ECONNREFUSED',
+web:dev:   syscall: 'connect',
+web:dev:   address: '127.0.0.1',
+web:dev:   port: 8788
+web:dev: }
+web:dev: Error: connect ECONNREFUSED 127.0.0.1:8788
+web:dev:     at <unknown> (Error: connect ECONNREFUSED 127.0.0.1:8788) {
+web:dev:   errno: -111,
+web:dev:   code: 'ECONNREFUSED',
+web:dev:   syscall: 'connect',
+web:dev:   address: '127.0.0.1',
+web:dev:   port: 8788
+web:dev: }

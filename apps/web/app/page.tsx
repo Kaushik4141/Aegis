@@ -1152,6 +1152,7 @@ const sandboxEventTone = (type: string): "red" | "amber" | "green" | "slate" | "
     net_connect: "blue",
     dns_lookup: "slate",
     process: "slate",
+    port_listen: "blue",
   }[type] as "red" | "amber" | "green" | "slate" | "blue") || "slate";
 
 const splitCommand = (value: string): string[] =>
@@ -1199,11 +1200,26 @@ function SandboxTerminal({
     };
 
     void (async () => {
-      const [{ Terminal }, { FitAddon }] = await Promise.all([import("@xterm/xterm"), import("@xterm/addon-fit")]);
+      const [{ Terminal }, { FitAddon }, { WebLinksAddon }] = await Promise.all([
+        import("@xterm/xterm"),
+        import("@xterm/addon-fit"),
+        import("@xterm/addon-web-links"),
+      ]);
       if (disposed || !hostRef.current) return;
       term = new Terminal({ fontSize: 11.5, cursorBlink: true, fontFamily: "var(--font-mono, monospace)", theme: { background: "#0b1020" } });
       fit = new FitAddon();
       term.loadAddon(fit);
+      // Auth-URL ergonomics: click a link to open it on the laptop (OAuth
+      // flows), and Ctrl/Cmd+Shift+C copies the selection.
+      term.loadAddon(new WebLinksAddon((event, uri) => window.open(uri, "_blank", "noopener")));
+      term.attachCustomKeyEventHandler((event) => {
+        if (event.type === "keydown" && (event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === "c") {
+          const selection = term?.getSelection();
+          if (selection) void navigator.clipboard?.writeText(selection);
+          return false;
+        }
+        return true;
+      });
       term.open(hostRef.current);
       fit.fit();
 
@@ -1254,6 +1270,7 @@ function renderTimelineEvent(event: SandboxEventUi) {
         {event.type === "lifecycle" && `${event.detail.kind}${event.detail.code !== undefined ? ` (${event.detail.code})` : ""}`}
         {event.type === "process" && `${event.detail.kind === "start" ? "▲" : "▽"} ${event.detail.args}`}
         {event.type === "enforce_rule" && `${event.detail.kind} ${event.detail.ip}`}
+        {event.type === "port_listen" && `loopback :${event.detail.port} (${event.detail.process || "agent"}) — forwarded to laptop`}
       </p>
     </div>
   );

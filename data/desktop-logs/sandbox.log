@@ -6,39 +6,53 @@ npm notice run turbo run dev --filter=sandbox
    • Running dev in 1 package
    • Remote caching disabled, using shared worktree cache
 
-sandbox:dev: cache bypass, force executing 61858f24f8d8cd88
+sandbox:dev: cache bypass, force executing 327e94c62a432486
 sandbox:dev: npm notice run sandbox@0.1.0 dev
 sandbox:dev: npm notice run tsx watch src/index.ts
 sandbox:dev: [sandbox] Aegis sandbox service listening on http://127.0.0.1:8788
 sandbox:dev: [sandbox] gateway for agents: http://host.docker.internal:8787/api/v1
-sandbox:dev: [sandbox] gateway push failed (/sandboxes/sb_aac8c8b7cb544f228b00/events): gateway returned 422
-sandbox:dev: [sandbox] gateway push failed (/sandboxes/sb_aac8c8b7cb544f228b00/events): gateway returned 422
-sandbox:dev: 7:41:04 PM [tsx] change in ./src/docker.ts Restarting...
-sandbox:dev: [sandbox] Aegis sandbox service listening on http://127.0.0.1:8788
-sandbox:dev: [sandbox] gateway for agents: http://host.docker.internal:8787/api/v1
-sandbox:dev: [sandbox] adopted 3 running sandbox container(s)
-sandbox:dev: 7:41:19 PM [tsx] change in ./src/docker.ts Restarting...
-sandbox:dev: [sandbox] Aegis sandbox service listening on http://127.0.0.1:8788
-sandbox:dev: [sandbox] gateway for agents: http://host.docker.internal:8787/api/v1
-sandbox:dev: [sandbox] adopted 3 running sandbox container(s)
-sandbox:dev: 7:43:23 PM [tsx] change in ./src/orchestrator.ts Restarting...
-sandbox:dev: [sandbox] Aegis sandbox service listening on http://127.0.0.1:8788
-sandbox:dev: [sandbox] gateway for agents: http://host.docker.internal:8787/api/v1
-sandbox:dev: [sandbox] adopted sandbox:dev: 7:43:44 PM [tsx] csandbox:dev: 7:43:44 PM [tsx] change in ./src/orchestrator.ts Restarting.sandbox:dev: 7:53:42 PM [tsx] change in ./src/orchestrator.ts Process hasn't exited. Killing process...
-sandbox:dev: 7:54:07 PM [tsx] change in ./src/docker.ts Process hasn't exited. Killing process...
-sandbox:dev: 7:54:18 PM [tsx] change in ./src/index.ts Process hasn't exited. Killing process...
-sandbox:dev: 7:56:35 PM [tsx] change in ./src/docker.ts Process hasn't exited. Killing process...
-[sandbox] gateway for agents: http://host.docker.internal:8787/api/v1
-sandbox:dev: [sandbox] adopted 3 running sandbox container(s)
-sandbox:dev: 7:54:07 PM [tsx] change in ./src/docker.ts Restarting...
-sandbox:dev: [sandbox] Aegis sandbox service listening on http://127.0.0.1:8788
-sandbox:dev: [sandbox] gateway for agents: http://host.docker.internal:8787/api/v1
-sandbox:dev: [sandbox] adopted 3 running sandbox container(s)
-sandbox:dev: 7:54:18 PM [tsx] change in ./src/index.ts Restarting...
-sandbox:dev: [sandbox] Aegis sandbox service listening on http://127.0.0.1:8788
-sandbox:dev: [sandbox] gateway for agents: http://host.docker.internal:8787/api/v1
-sandbox:dev: [sandbox] adopted 3 running sandbox container(s)
-sandbox:dev: 7:56:35 PM [tsx] change in ./src/docker.ts Restarting...
+sandbox:dev: [sandbox] gateway push failed (/sandboxes): fetch failed
+sandbox:dev: [sandbox] adopted 4 running sandbox container(s)
+sandbox:dev: 8:30:56 PM [tsx] change in ./src/docker.ts Restarting...
 sandbox:dev: [sandbox] Aegis sandbox service listening on http://127.0.0.1:8788
 sandbox:dev: [sandbox] gateway for agents: http://host.docker.internal:8787/api/v1
 sandbox:dev: [sandbox] adopted 4 running sandbox container(s)
+sandbox:dev: 8:31:17 PM [tsx] change in ./src/orchestrator.ts Restarting...
+sandbox:dev: [sandbox] Aegis sandbox service listening on http://127.0.0.1:8788
+sandbox:dev: [sandbox] gateway for agents: http://host.docker.internal:8787/api/v1
+sandbox:dev: [sandbox] adopted 4 running sandbox container(s)
+sandbox:dev: 8:32:34 PM [tsx] change in ./src/orchestrator.ts Restarting...
+sandbox:dev: [sandbox] Aegis sandbox service listening on http://127.0.0.1:8788
+sandbox:dev: [sandbox] gateway for agents: http://host.docker.internal:8787/api/v1
+sandbox:dev: [sandbox] adopted 4 running sandbox container(s)
+sandbox:dev: 8:34:18 PM [tsx] change in ./src/orchestrator.ts Restarting...
+sandbox:dev: [sandbox] Aegis sandbox service listening on http://127.0.0.1:8788
+sandbox:dev: [sandbox] gateway for agents: http://host.docker.internal:8787/api/v1
+sandbox:dev: [sandbox] adopted 4 running sandbox container(s)
+sandbox:dev: 8:35:10 PM [tsx] change in ./src/orchestrator.ts Restarting...
+sandbox:dev: [sandbox] Aegis sandbox service listening on http://127.0.0.1:8788
+sandbox:dev: [sandbox] gateway for agents: http://host.docker.internal:8787/api/v1
+sandbox:dev: [sandbox] adopted 4 running sandbox container(s)
+sandbox:dev: [sandbox] forwarding laptop:7777 -> container sb_a0b01edf06c345c78f2d:7777
+sandbox:dev: 8:46:32 PM [tsx] change in ./src/docker.ts Rerunning...
+sandbox:dev: node:events:505
+sandbox:dev:     throw er; // Unhandled 'error' event
+sandbox:dev:     ^
+sandbox:dev: 
+sandbox:dev: Error: listen EADDRINUSE: address already in use :::8788
+sandbox:dev:     at Server.setupListenHandle [as _listen2] (node:net:2328:16)
+sandbox:dev:     at listenInCluster (node:net:2437:12)
+sandbox:dev:     at Server.listen (node:net:2562:7)
+sandbox:dev:     at serve (file:///home/kaushi/Projects/DEVHOST-sandbox/apps/sandbox/node_modules/@hono/node-server/dist/index.mjs:651:10)
+sandbox:dev:     at <anonymous> (/home/kaushi/Projects/DEVHOST-sandbox/apps/sandbox/src/index.ts:80:16)
+sandbox:dev: Emitted 'error' event on Server instance at:
+sandbox:dev:     at emitErrorNT (node:net:2416:8)
+sandbox:dev:     at process.processTicksAndRejections (node:internal/process/task_queues:90:21) {
+sandbox:dev:   code: 'EADDRINUSE',
+sandbox:dev:   errno: -98,
+sandbox:dev:   syscall: 'listen',
+sandbox:dev:   address: '::',
+sandbox:dev:   port: 8788
+sandbox:dev: }
+sandbox:dev: 
+sandbox:dev: Node.js v26.8.1

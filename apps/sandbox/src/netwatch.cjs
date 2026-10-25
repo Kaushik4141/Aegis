@@ -230,19 +230,32 @@ function parseSsLine(line) {
   const tokens = line.trim().split(/\s+/);
   if (tokens.length < 6) return null;
   const state = tokens[1];
+  const localRaw = tokens[4];
   const peerRaw = tokens[5];
   const processInfo = tokens.slice(6).join(" ");
-  const lastColon = peerRaw.lastIndexOf(":");
-  if (lastColon === -1) return null;
-  const peer = peerRaw.slice(0, lastColon).replace(/^\[|\]$/g, "");
-  const peerPort = Number(peerRaw.slice(lastColon + 1));
+  const splitHost = (raw) => {
+    const lastColon = raw.lastIndexOf(":");
+    if (lastColon === -1) return { host: raw, port: NaN };
+    return { host: raw.slice(0, lastColon).replace(/^\[|\]$/g, ""), port: Number(raw.slice(lastColon + 1)) };
+  };
+  const local = splitHost(localRaw);
+  const peer = splitHost(peerRaw);
   const pidMatch = processInfo.match(/pid=(\d+)/);
   const nameMatch = processInfo.match(/\(\("([^"]+)"/);
-  return { state: state.toLowerCase(), local: tokens[4], peer, peerPort, pid: pidMatch ? Number(pidMatch[1]) : undefined, process: nameMatch ? nameMatch[1] : undefined };
+  return {
+    state: state.toLowerCase(),
+    local: local.host,
+    localPort: local.port,
+    peer: peer.host,
+    peerPort: peer.port,
+    pid: pidMatch ? Number(pidMatch[1]) : undefined,
+    process: nameMatch ? nameMatch[1] : undefined,
+  };
 }
 
 const seenConnections = new Set();
 const recentDns = new Map(); // name -> last emit ts (dedupe A/AAAA bursts)
+const seenListeners = new Set(); // ports with an emitted port_listen
 const WATCHED_STATES = new Set(["estab", "established", "syn-sent", "time-wait", "close-wait", "fin-wait-1", "fin-wait-2", "last-ack", "close"]);
 let channelPeer = ""; // host:port of the event channel itself, excluded from events
 
@@ -252,6 +265,69 @@ function shouldEmitDns(name) {
   if (now - last < 700) return false;
   recentDns.set(name, now);
   return true;
+}
+
+let routeLocalnetOn = false;
+const relayedPorts = new Set();
+
+/** The sandbox's bridge IP (host-reachable). */
+function containerEth0Ip() {
+  return new Promise((resolve) => {
+    execFile("ip", ["-4", "-o", "addr", "show", "eth0"], (error, stdout) => {
+      if (error) return resolve("");
+      const match = stdout.match(/inet (\d+\.\d+\.\d+\.\d+)/);
+      resolve(match ? match[1] : "");
+    });
+  });
+}
+
+/**
+ * Loopback listeners (OAuth callback servers) are only reachable inside the
+ * netns. Relay them: DNAT containerIP:port -> 127.0.0.1:port so the service's
+ * laptop-side forwarder can complete browser round-trips. route_localnet
+ * (required for DNAT to loopback, namespaced to this sandbox) is set on the
+ * agent container at create time via --sysctl.
+ */
+async function relayPort(port) {
+  if (relayedPorts.has(port)) return;
+  relayedPorts.add(port);
+  const ip = await containerEth0Ip();
+  if (!ip) {
+    process.stderr.write(`[aegis-netwatch] no eth0 IP; cannot relay :${port}\n`);
+    return;
+  }
+  await fw(["iptables", "-t", "nat", "-A", "PREROUTING", "-d", `${ip}/32`, "-p", "tcp", "--dport", String(port), "-j", "DNAT", "--to-destination", `127.0.0.1:${port}`]);
+  emit("enforce_rule", { kind: "relay", ip, port });
+}
+
+/**
+ * Loopback LISTEN detection: agent CLIs (claude, codex, agy) run their OAuth
+ * callback servers on 127.0.0.1:<random>. Each new listener becomes a
+ * port_listen event so the service can forward laptop:port -> container:port
+ * and the browser round-trip completes. The DNS resolver's own port 53 is
+ * excluded. Note: ss -tlnp (TCP-only) has no Netid column, unlike -tunp.
+ */
+function pollListeners() {
+  execFile("ss", ["-tlnp"], (error, stdout) => {
+    if (error) return;
+    for (const line of stdout.split("\n").slice(1)) {
+      const tokens = line.trim().split(/\s+/);
+      if (tokens.length < 5) continue;
+      const state = tokens[0].toLowerCase();
+      const localRaw = tokens[3];
+      if (state !== "listen") continue;
+      const lastColon = localRaw.lastIndexOf(":");
+      if (lastColon === -1) continue;
+      const localHost = localRaw.slice(0, lastColon).replace(/^\[|\]$/g, "");
+      if (localHost !== "127.0.0.1" && localHost !== "::1" && localHost !== "*") continue;
+      const port = Number(localRaw.slice(lastColon + 1));
+      if (!port || port === 53 || seenListeners.has(port)) continue;
+      seenListeners.add(port);
+      void relayPort(port);
+      const nameMatch = tokens.slice(4).join(" ").match(/\(\("([^"]+)"/);
+      emit("port_listen", { port, process: nameMatch ? nameMatch[1] : undefined, local: localHost });
+    }
+  });
 }
 
 function pollConnections() {
@@ -308,7 +384,9 @@ async function main() {
 
   startDns();
   setInterval(pollConnections, 300);
+  setInterval(pollListeners, 1000);
   pollConnections();
+  pollListeners();
   if (MODE === "enforce") await setupEnforce();
   process.stderr.write(`[aegis-netwatch] watching sandbox ${SANDBOX_ID} (mode=${MODE}, default=${ENFORCE_DEFAULT})\n`);
 }

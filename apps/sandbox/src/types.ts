@@ -9,7 +9,8 @@ export type SandboxEventType =
   | "exec"
   | "alert"
   | "lifecycle"
-  | "enforce_rule";
+  | "enforce_rule"
+  | "port_listen";
 
 export interface SandboxEventInput {
   type: SandboxEventType;

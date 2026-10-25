@@ -100,6 +100,9 @@ export async function runAgent(options: RunAgentOptions): Promise<void> {
       ? ["--label", `aegis.project=${options.projectLabel || ""}`, "--label", `aegis.projectPath=${options.projectPath}`, "--label", `aegis.projectRo=${options.readOnly ? "1" : "0"}`]
       : []),
     "--add-host=host.docker.internal:host-gateway",
+    // Loopback relays (OAuth callbacks) DNAT to 127.0.0.1; requires
+    // route_localnet, which docker only allows via --sysctl at create time.
+    "--sysctl", "net.ipv4.conf.all.route_localnet=1",
     "-v", workspace,
     ...(options.extraMounts || []).map((mount) => ["-v", mount]).flat(),
     "-w", "/workspace",
@@ -189,6 +192,17 @@ export async function copyIntoWorkspace(id: string, sourceDir: string): Promise<
 
 export async function removeWorkspaceVolume(id: string): Promise<void> {
   await docker(["volume", "rm", workspaceVolume(id)]).catch(() => undefined);
+}
+
+/** Bridge-network address of the agent container, reachable from the host. */
+export async function containerIp(id: string): Promise<string | null> {
+  try {
+    const output = await docker(["inspect", "-f", "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}", imageName(id).agent]);
+    const ip = output.trim();
+    return /^\d+\.\d+\.\d+\.\d+$/.test(ip) ? ip : null;
+  } catch {
+    return null;
+  }
 }
 
 export interface AdoptedSandbox {
