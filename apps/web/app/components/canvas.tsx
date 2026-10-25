@@ -341,10 +341,17 @@ export function AgentsView({ notify }: { notify: (message: string) => void }) {
     if (!selected) return;
     setBusy(true);
     try {
-      await fetch(`/sandbox-api/sandboxes/${selected.id}/${verb}`, { method: verb === "delete" ? "DELETE" : "POST" });
+      const endpoint = verb === "delete" ? `/sandbox-api/sandboxes/${selected.id}` : `/sandbox-api/sandboxes/${selected.id}/${verb}`;
+      const response = await fetch(endpoint, { method: verb === "delete" ? "DELETE" : "POST" });
+      if (!response.ok) {
+        const body = (await response.json().catch(() => null)) as { message?: string; error?: string } | null;
+        throw new Error(body?.message || body?.error || `HTTP ${response.status}`);
+      }
       if (verb === "delete") setSelectedId("");
       notify(verb === "delete" ? "Workspace deleted" : verb === "restart" ? "Workspace restarted" : "Sandbox stopped");
       await refresh();
+    } catch (error) {
+      notify(`Failed to ${verb} workspace: ${error instanceof Error ? error.message : "unknown error"}`);
     } finally {
       setBusy(false);
     }
