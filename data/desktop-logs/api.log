@@ -12,10 +12,6 @@ api:dev: npm notice run tsx watch src/index.ts
 api:dev: ☁️  Cloudflare D1 database ready (100 customers, 250 billing records).
 api:dev: 🛡️  SentinelGate Hono API server running on http://localhost:8787
 api:dev: 📡 Endpoints mounted at http://localhost:8787/api/v1 and http://localhost:8787/health
-Shutting down Turborepo tasks...
-Force killed Turborepo tasks: api#dev
-
- Tasks:    0 successful, 1 total
-Cached:    0 cached, 1 total
-  Time:    6m58.291s 
-
+api:dev: 9:56:36 PM [tsx] change in ./src/server/sandboxStore.ts Restarting...
+api:dev: 9:56:41 PM [tsx] Process didn't exit in 5s. Force killing...
+api:dev: 9:57:02 PM [tsx] change in ./src/server/gateway.ts Process hasn't exited. Killing process...

@@ -120,6 +120,16 @@ export class SandboxStore {
     return rows.map((row) => ({ id: row.id, sandboxId: row.sandboxId, type: row.type, detail: JSON.parse(row.detailJson), ts: row.ts }));
   }
 
+  /** Cross-sandbox recent events, for the unified activity feed. */
+  async listRecentEvents(options: { type?: string; limit?: number } = {}): Promise<SandboxEventRecord[]> {
+    const { db } = await this.getDb();
+    const safeLimit = Math.min(2000, Math.max(1, Math.floor(options.limit ?? 500)));
+    const rows = options.type
+      ? await db.select().from(schema.sandboxEvents).where(eq(schema.sandboxEvents.type, options.type)).orderBy(desc(schema.sandboxEvents.ts)).limit(safeLimit)
+      : await db.select().from(schema.sandboxEvents).orderBy(desc(schema.sandboxEvents.ts)).limit(safeLimit);
+    return rows.map((row) => ({ id: row.id, sandboxId: row.sandboxId, type: row.type, detail: JSON.parse(row.detailJson), ts: row.ts }));
+  }
+
   private toSummary(row: typeof schema.sandboxes.$inferSelect): SandboxSummary {
     return {
       id: row.id,

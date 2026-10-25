@@ -606,6 +606,57 @@ export function createSentinelGate(options: SentinelGatewayOptions = {}) {
   }));
   app.post("/sandboxes/:id/events", ingestSandboxEvents);
 
+  /**
+   * Unified activity feed: policy-engine actions and sandbox events merged
+   * into one time-sorted stream. `filter` narrows it:
+   * tool_calls | alerts | network | files | all (default).
+   */
+  app.get("/feed", async (c) => {
+    const filter = c.req.query("filter") || "all";
+    const limit = Math.min(500, Math.max(1, Number(c.req.query("limit")) || 200));
+    const items: Array<Record<string, unknown>> = [];
+    const wantToolCalls = filter === "all" || filter === "tool_calls";
+    const wantAlerts = filter === "all" || filter === "alerts";
+    const wantNetwork = filter === "all" || filter === "network";
+    const wantFiles = filter === "all" || filter === "files";
+    if (wantToolCalls) {
+      for (const action of await store.listActions(limit)) {
+        items.push({
+          kind: "action",
+          id: action.id,
+          ts: action.updatedAt,
+          actor: action.actorId || "agent",
+          title: action.action,
+          resource: action.resource,
+          status: action.status,
+          riskScore: action.decision?.riskScore,
+          labels: action.decision?.labels,
+          payload: action.payload,
+        });
+      }
+    }
+    const eventTypes = new Set<string>();
+    if (wantAlerts) eventTypes.add("alert");
+    if (wantNetwork) ["net_connect", "dns_lookup", "port_listen", "port_close"].forEach((t) => eventTypes.add(t));
+    if (wantFiles) ["file_write", "process"].forEach((t) => eventTypes.add(t));
+    const sandboxItems = wantAlerts || wantNetwork || wantFiles
+      ? await sandboxStore.listRecentEvents({ limit: limit * 2 })
+      : [];
+    for (const event of sandboxItems) {
+      if (eventTypes.size && !eventTypes.has(event.type)) continue;
+      items.push({
+        kind: "sandbox_event",
+        id: event.id,
+        ts: event.ts,
+        actor: event.sandboxId,
+        type: event.type,
+        detail: event.detail,
+      });
+    }
+    items.sort((a, b) => String(b.ts).localeCompare(String(a.ts)));
+    return c.json({ items: items.slice(0, limit), requestId: c.get("requestId") });
+  });
+
 
   const mcpProxy = async (c: Context<GatewayEnv>) => {
     const connectionId = c.req.param("connectionId");
