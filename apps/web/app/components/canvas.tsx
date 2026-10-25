@@ -95,7 +95,7 @@ function SandboxWindowNode({ data, selected }: NodeProps) {
 
 const canvasNodeTypes = { sandboxWindow: SandboxWindowNode };
 
-export function AgentsView({ notify }: { notify: (message: string) => void }) {
+export function AgentsView({ notify, active = true }: { notify: (message: string) => void; active?: boolean }) {
   const [sandboxes, setSandboxes] = useState<SandboxRecordUi[]>([]);
   const [selectedId, setSelectedId] = useState("");
   const [events, setEvents] = useState<SandboxEventUi[]>([]);
@@ -133,6 +133,14 @@ export function AgentsView({ notify }: { notify: (message: string) => void }) {
       /* fresh canvas */
     }
   }, []);
+
+  // Terminals render into a display:none container while other tabs are
+  // open; re-fit them (and the canvas) when this tab becomes visible again.
+  useEffect(() => {
+    if (!active) return;
+    const timer = window.setTimeout(() => window.dispatchEvent(new Event("resize")), 80);
+    return () => window.clearTimeout(timer);
+  }, [active]);
 
   const refresh = useCallback(async () => {
     let list: SandboxRecordUi[] = [];
