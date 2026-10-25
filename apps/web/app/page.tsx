@@ -1208,11 +1208,12 @@ function SandboxTerminal({
   /** Sent once when the session opens — used to auto-start an agent (e.g. "claude\n"). */
   initialInput?: string;
   onClosed: () => void;
-  /** Invoked when a clicked link could not be opened (embedded webviews). */
+  /** Status channel for clipboard fallbacks and link handling. */
   onLink?: (uri: string) => void;
   height?: number;
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
+  const termRef = useRef<import("@xterm/xterm").Terminal | null>(null);
   const closedRef = useRef(onClosed);
   closedRef.current = onClosed;
   const linkRef = useRef(onLink);
@@ -1221,6 +1222,35 @@ function SandboxTerminal({
   // Only the first initialInput per sandbox session matters; later prop
   // changes must not restart the terminal.
   if (initialRef.current === undefined && initialInput !== undefined) initialRef.current = initialInput;
+  const [copiedFlash, setCopiedFlash] = useState(false);
+
+  /**
+   * Copy from the terminal: the active selection when there is one, otherwise
+   * the most recent non-empty output lines. Falls back to instructing manual
+   * selection when the webview denies programmatic clipboard writes.
+   */
+  const copyFromTerminal = useCallback(async (fallbackToRecent: boolean) => {
+    const term = termRef.current;
+    if (!term) return;
+    let text = term.getSelection();
+    if (!text && fallbackToRecent) {
+      const buffer = term.buffer.active;
+      const lines: string[] = [];
+      for (let i = Math.max(0, buffer.length - 80); i < buffer.length; i++) {
+        const line = buffer.getLine(i)?.translateToString(true);
+        if (line?.trim()) lines.push(line);
+      }
+      text = lines.join("\n");
+    }
+    if (!text) return;
+    const copied = await copyText(text);
+    if (copied) {
+      setCopiedFlash(true);
+      window.setTimeout(() => setCopiedFlash(false), 1200);
+    } else {
+      linkRef.current?.("Copy blocked here — select the text in the terminal, then use Ctrl+Shift+C or your browser's copy menu.");
+    }
+  }, []);
 
   useEffect(() => {
     let disposed = false;
@@ -1239,6 +1269,7 @@ function SandboxTerminal({
       ]);
       if (disposed || !hostRef.current) return;
       term = new Terminal({ fontSize: 11.5, cursorBlink: true, fontFamily: "var(--font-mono, monospace)", theme: { background: "#0b1020" } });
+      termRef.current = term;
       fit = new FitAddon();
       term.loadAddon(fit);
       // Auth-URL ergonomics: click a link to open it on the laptop. Embedded
@@ -1290,10 +1321,23 @@ function SandboxTerminal({
       window.removeEventListener("resize", handleResize);
       socket?.close();
       term?.dispose();
+      termRef.current = null;
     };
   }, [sandboxId]);
 
-  return <div ref={hostRef} className="w-full overflow-hidden bg-[#0b1020]" style={{ height }} />;
+  return (
+    <div className="relative w-full bg-[#0b1020]" style={{ height }}>
+      <div ref={hostRef} className="h-full w-full overflow-hidden" />
+      <button
+        type="button"
+        title="Copy selection (or recent output)"
+        onClick={() => void copyFromTerminal(true)}
+        className="absolute right-2 top-1.5 z-10 rounded-md border border-slate-700/70 bg-slate-900/80 p-1.5 text-slate-400 hover:text-slate-100"
+      >
+        {copiedFlash ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+      </button>
+    </div>
+  );
 }
 
 function renderTimelineEvent(event: SandboxEventUi) {
