@@ -29,10 +29,14 @@ type SandboxNodeData = {
   sandbox: SandboxRecordUi;
   hasAlert: boolean;
   initialCommand?: string;
+  signature?: string;
   onInspect: (id: string) => void;
   onSessionEnded: (id: string) => void;
   onLink?: (message: string) => void;
 };
+
+const sandboxSignature = (sandbox: SandboxRecordUi, hasAlert: boolean, initialCommand: string): string =>
+  `${sandbox.name}|${sandbox.status}|${sandbox.mode}|${sandbox.homeProfile ? 1 : 0}|${sandbox.project?.name ?? ""}|${sandbox.project?.path ?? ""}|${sandbox.project?.readOnly ? 1 : 0}|${hasAlert ? 1 : 0}|${initialCommand}`;
 
 const CANVAS_POSITIONS_KEY = "aegis-canvas-positions";
 const canvasSlot = (slot: number) => ({ x: 40 + (slot % 2) * 660, y: 24 + Math.floor(slot / 2) * 430 });
@@ -46,7 +50,7 @@ function SandboxWindowNode({ data, selected }: NodeProps) {
         hasAlert ? "border-red-300 ring-2 ring-red-300" : selected ? "border-blue-300 ring-2 ring-blue-300" : "border-slate-200"
       }`}
     >
-      <div className="flex cursor-grab items-center justify-between gap-2 border-b border-slate-100 bg-slate-50/70 px-3 py-2">
+      <div className="flex cursor-grab select-none items-center justify-between gap-2 border-b border-slate-100 bg-slate-50/70 px-3 py-2">
         <div className="flex min-w-0 items-center gap-2">
           <GripVertical size={12} className="shrink-0 text-slate-300" />
           <span className="truncate text-[11px] font-bold text-slate-800">{sandbox.name}</span>
@@ -183,10 +187,20 @@ export function AgentsView({ notify }: { notify: (message: string) => void }) {
     return () => window.clearInterval(timer);
   }, [refresh]);
 
+  // Mirror sandboxes into canvas nodes. Node objects keep their identity
+  // unless their data actually changed: React Flow tracks drags per node
+  // instance, so replacing objects on every 3s poll would kill in-progress
+  // drags.
+  const dragInProgress = useRef(false);
   useEffect(() => {
+    if (dragInProgress.current) return;
     setNodes((previous) =>
       sandboxes.map((sandbox, index) => {
         const existing = previous.find((node) => node.id === sandbox.id);
+        const hasAlert = alertIds.includes(sandbox.id);
+        const initialCommand = initialCommands.current[sandbox.id] ?? "";
+        const signature = sandboxSignature(sandbox, hasAlert, initialCommand);
+        if (existing && existing.data.signature === signature) return existing;
         const position = existing?.position ?? positions.current[sandbox.id] ?? canvasSlot(index);
         return {
           id: sandbox.id,
@@ -194,8 +208,9 @@ export function AgentsView({ notify }: { notify: (message: string) => void }) {
           position,
           data: {
             sandbox,
-            hasAlert: alertIds.includes(sandbox.id),
-            initialCommand: initialCommands.current[sandbox.id] ?? "",
+            hasAlert,
+            initialCommand,
+            signature,
             onInspect: (id: string) => setSelectedId(id),
             onSessionEnded: () => void refresh(),
             onLink: (message: string) => setLinkBar(message),
@@ -221,6 +236,13 @@ export function AgentsView({ notify }: { notify: (message: string) => void }) {
         /* private mode */
       }
     }
+  }, []);
+
+  const onNodeDragStart = useCallback(() => {
+    dragInProgress.current = true;
+  }, []);
+  const onNodeDragStop = useCallback(() => {
+    dragInProgress.current = false;
   }, []);
 
   const createSandbox = useCallback(
@@ -435,6 +457,8 @@ export function AgentsView({ notify }: { notify: (message: string) => void }) {
           onNodesChange={onNodesChange}
           nodeTypes={canvasNodeTypes}
           onNodeClick={(_, node) => setSelectedId(node.id)}
+          onNodeDragStart={onNodeDragStart}
+          onNodeDragStop={onNodeDragStop}
           nodesConnectable={false}
           zoomOnDoubleClick={false}
           minZoom={0.25}
@@ -464,7 +488,8 @@ export function AgentsView({ notify }: { notify: (message: string) => void }) {
 
       {selected && (
         <>
-          <button type="button" className="fixed inset-0 z-30 cursor-default bg-slate-900/20" onClick={() => setSelectedId("")} aria-label="Close inspector" />
+          {/* No full-screen backdrop: it would block dragging windows while
+              the inspector is open. The drawer floats; close it with the ✕. */}
           <div className="fixed right-4 top-[84px] bottom-4 z-40 w-[360px] overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-panel">
             <SectionHeading
               icon={<Activity size={15} />}
