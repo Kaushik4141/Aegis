@@ -23,6 +23,54 @@ interface SandboxRuntime {
   logs: string[];
   events: SandboxEventInput[];
   pollTimer?: NodeJS.Timeout;
+  /** Home-profile env (PATH additions, ssh-agent socket) applied to exec shells. */
+  profileEnv?: Record<string, string>;
+}
+
+/**
+ * Curated slices of the user's laptop brought into a workspace: shell rc and
+ * git identity (read-only), agent configs/logins (shared read-write so login
+ * persists), global package dirs (read-only, put on PATH), and the ssh-agent
+ * socket (use keys without copying them). Only mounts things that exist.
+ */
+async function homeProfileMounts(): Promise<{ mounts: string[]; env: Record<string, string> }> {
+  const home = process.env.HOME || "/home";
+  const mounts: string[] = [];
+  const pathParts: string[] = [];
+  const exists = async (candidate: string) => (await fs.promises.stat(candidate).catch(() => null)) !== null;
+
+  for (const [source, dest] of [
+    [path.join(home, ".gitconfig"), "/home/agent/.gitconfig"],
+    [path.join(home, ".bashrc"), "/home/agent/.bashrc"],
+    [path.join(home, ".profile"), "/home/agent/.profile"],
+  ] as const) {
+    if (await exists(source)) mounts.push(`${source}:${dest}:ro`);
+  }
+  // Agent configs are shared read-write: log in once on the canvas, use it in
+  // every workspace; skills and settings stay in sync with the laptop.
+  for (const dir of [".claude", ".codex", ".gemini", ".antigravity"]) {
+    const source = path.join(home, dir);
+    if (await exists(source)) mounts.push(`${source}:/home/agent/${dir}`);
+  }
+  // Global packages are usable (ro) and first on PATH; installs inside the
+  // workspace don't dirty the laptop.
+  for (const [source, dest, bin] of [
+    [path.join(home, ".local"), "/home/agent/.local", "/home/agent/.local/bin"],
+    [path.join(home, ".npm-global"), "/home/agent/.npm-global", "/home/agent/.npm-global/bin"],
+  ] as const) {
+    if (await exists(source)) {
+      mounts.push(`${source}:${dest}:ro`);
+      pathParts.push(bin);
+    }
+  }
+  const env: Record<string, string> = {};
+  if (pathParts.length) env.AEGIS_EXTRA_PATH = pathParts.join(":");
+  const sshSocket = process.env.SSH_AUTH_SOCK;
+  if (sshSocket && (await exists(sshSocket))) {
+    mounts.push(`${sshSocket}:/home/agent/.ssh/agent.sock`);
+    env.SSH_AUTH_SOCK = "/home/agent/.ssh/agent.sock";
+  }
+  return { mounts, env };
 }
 
 export class Orchestrator {
@@ -63,6 +111,11 @@ export class Orchestrator {
     return "1.1.1.1";
   }
 
+  /** Env applied to terminal sessions (PATH additions, ssh-agent socket). */
+  envFor(id: string): Record<string, string> {
+    return this.runtimes.get(id)?.profileEnv || {};
+  }
+
   list(): SandboxRecord[] {
     return [...this.runtimes.values()].map((runtime) => runtime.record).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }
@@ -86,10 +139,12 @@ export class Orchestrator {
           status: found.running ? "running" : "stopped",
           interactive: found.interactive,
           ...(found.project ? { project: found.project } : {}),
+          ...(found.home ? { homeProfile: true } : {}),
           createdAt: now,
           updatedAt: now,
         };
         const runtime: SandboxRuntime = { record, logs: [], events: [] };
+        if (found.home && !process.env.DOCKER_HOST) runtime.profileEnv = (await homeProfileMounts()).env;
         this.runtimes.set(found.id, runtime);
         if (found.running) runtime.pollTimer = setInterval(() => void this.watch(found.id), 5000);
         await this.gateway.announceSandbox({ id: found.id, name: record.name, command: record.command, mode: record.mode, status: record.status });
@@ -191,17 +246,25 @@ export class Orchestrator {
       status: "running",
       interactive,
       ...(input.project ? { project: input.project } : {}),
+      ...(input.homeProfile ? { homeProfile: true } : {}),
       createdAt: now,
       updatedAt: now,
     };
     const runtime: SandboxRuntime = { record, logs: [], events: [] };
     this.runtimes.set(id, runtime);
 
+    // Home-profile mounts are local-daemon only (paths live on the laptop).
+    const home = input.homeProfile && !process.env.DOCKER_HOST ? await homeProfileMounts() : { mounts: [], env: {} };
+    if (input.homeProfile && process.env.DOCKER_HOST) {
+      console.warn("[sandbox] homeProfile ignored: requires a local Docker daemon");
+    }
+    runtime.profileEnv = home.env;
+
     try {
       await runAgent({
         id,
         command: interactive ? [] : command,
-        env: input.env || {},
+        env: { ...(input.env || {}), ...home.env },
         eventUrl: this.eventUrl,
         upstreamDns: this.upstreamDns(),
         mode,
@@ -213,6 +276,7 @@ export class Orchestrator {
         ...(input.project
           ? { projectPath: input.project.path, readOnly: Boolean(input.project.readOnly), projectLabel: input.project.name }
           : {}),
+        ...(home.mounts.length ? { extraMounts: home.mounts } : {}),
         // Match the laptop user so mounted project files stay user-owned.
         agentUid: typeof process.getuid === "function" ? process.getuid() : 1000,
       });

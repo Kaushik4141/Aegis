@@ -40,6 +40,8 @@ export interface SandboxRecord {
   /** Interactive sandboxes run a keepalive and are driven via exec sessions; they persist across stop/restart. */
   interactive: boolean;
   project?: SandboxProject;
+  /** Curated slices of the user's home were mounted in (shell rc, git identity, agent configs, packages, ssh-agent). */
+  homeProfile?: boolean;
   createdAt: string;
   updatedAt: string;
   exitCode?: number;
@@ -62,4 +64,6 @@ export interface CreateSandboxInput {
   stdin?: string;
   /** Open a real host folder as the project (bind-mounted, local daemon only). */
   project?: SandboxProject;
+  /** Mount curated slices of the user's home so the workspace feels like their laptop. */
+  homeProfile?: boolean;
 }

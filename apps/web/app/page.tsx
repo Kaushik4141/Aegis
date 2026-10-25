@@ -1134,6 +1134,7 @@ type SandboxRecordUi = {
   status: string;
   interactive?: boolean;
   project?: { name: string; path: string; readOnly?: boolean };
+  homeProfile?: boolean;
   exitCode?: number;
   report?: { filesystem?: Array<{ kind: string; path: string }>; eventCounts?: Record<string, number> };
   createdAt: string;
@@ -1273,6 +1274,7 @@ const SANDBOX_TEMPLATES = [
   { id: "shell", label: "Shell", command: "" },
   { id: "claude", label: "Claude Code", command: "claude" },
   { id: "codex", label: "Codex", command: "codex" },
+  { id: "antigravity", label: "Antigravity", command: "agy" },
 ] as const;
 
 /**
@@ -1299,6 +1301,7 @@ function SandboxWindowNode({ data, selected }: NodeProps) {
               {sandbox.project.readOnly ? " · ro" : ""}
             </StatusPill>
           )}
+          {sandbox.homeProfile && <StatusPill tone="green">home</StatusPill>}
           <StatusPill tone={sandbox.mode === "enforce" ? "blue" : "slate"}>{sandbox.mode}</StatusPill>
           {hasAlert && (
             <StatusPill tone="red">
@@ -1350,6 +1353,7 @@ function SandboxesView({ notify }: { notify: (message: string) => void }) {
   const [projectPath, setProjectPath] = useState("");
   const [projectName, setProjectName] = useState("");
   const [projectReadOnly, setProjectReadOnly] = useState(false);
+  const [homeProfile, setHomeProfile] = useState(true);
   const [busy, setBusy] = useState(false);
   const [serviceUp, setServiceUp] = useState(true);
   const [nodes, setNodes] = useState<Node[]>([]);
@@ -1461,7 +1465,7 @@ function SandboxesView({ notify }: { notify: (message: string) => void }) {
       const response = await fetch("/sandbox-api/sandboxes", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ name: `${template.label} ${Date.now().toString(36).slice(-4)}`, command: [], mode }),
+        body: JSON.stringify({ name: `${template.label} ${Date.now().toString(36).slice(-4)}`, command: [], mode, homeProfile }),
       });
       if (!response.ok) throw new Error((await response.json()).message || `HTTP ${response.status}`);
       const body = (await response.json()) as { sandbox?: SandboxRecordUi };
@@ -1533,6 +1537,7 @@ function SandboxesView({ notify }: { notify: (message: string) => void }) {
             path: projectPath.trim(),
             ...(projectReadOnly ? { readOnly: true } : {}),
           },
+          homeProfile,
         }),
       });
       if (!response.ok) throw new Error((await response.json()).message || `HTTP ${response.status}`);
@@ -1795,6 +1800,15 @@ function SandboxesView({ notify }: { notify: (message: string) => void }) {
                     className="h-3.5 w-3.5"
                   />
                   Read-only (agent can read the folder, not write it)
+                </label>
+                <label className="flex items-center gap-2 text-[10px] font-bold text-slate-600">
+                  <input
+                    type="checkbox"
+                    checked={homeProfile}
+                    onChange={(event) => setHomeProfile(event.target.checked)}
+                    className="h-3.5 w-3.5"
+                  />
+                  Make it feel like home (your shell rc, git identity, agent logins &amp; skills, global packages, ssh-agent)
                 </label>
                 <button type="button" disabled={busy} onClick={() => void openProject()} className="button-primary w-full justify-center">
                   <Zap size={13} />

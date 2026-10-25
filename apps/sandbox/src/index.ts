@@ -111,7 +111,7 @@ server.on("upgrade", (request, socket, head) => {
     void execShell(id, {
       onOutput: (chunk) => { if (!closed) ws.send(chunk); },
       onExit: teardown,
-    }).then((created) => {
+    }, orchestrator.envFor(id)).then((created) => {
       if (closed) { void created.kill(); return; }
       session = created;
       ws.on("message", (data, isBinary) => {

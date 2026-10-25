@@ -294,6 +294,17 @@ native folder picker (tauri-plugin-dialog); in the browser, type the path.
 Project mounts require a local Docker daemon — remote daemons keep the
 isolated-volume workspaces.
 
+**Make it feel like home.** With the home profile enabled (default), a
+workspace also mounts curated slices of your laptop: your `.bashrc` /
+`.profile` (so the terminal behaves like yours), `.gitconfig` (commits carry
+your identity), agent configs (`~/.claude`, `~/.codex`, `~/.gemini`,
+`~/.antigravity` — log in once, every workspace shares the session and your
+skills), and global package dirs (`~/.local`, `~/.npm-global`, read-only and
+first on PATH). If an ssh-agent is running, its socket is forwarded so
+`git push` works without private keys ever entering the sandbox. The image
+preinstalls `claude`, `codex`, `tsx`, and the Google Antigravity CLI
+(`agy`), and the canvas has an **Antigravity** launch template.
+
 **One-shot runs (scripted agents and demos).**
 
 ```bash

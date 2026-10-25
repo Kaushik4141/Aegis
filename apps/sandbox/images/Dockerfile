@@ -10,6 +10,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # coding agents are preinstalled so users drop straight into their normal tools.
 RUN npm install -g tsx @anthropic-ai/claude-code @openai/codex
 
+# Google Antigravity CLI (terminal-first agent surface); installer targets
+# the invoking user's ~/.local, so relocate to a shared path readable by the
+# unprivileged agent user.
+RUN curl -fsSL https://antigravity.google/cli/install.sh | bash \
+ && cp -r /root/.local /opt/antigravity \
+ && chmod -R a+rX /opt/antigravity \
+ && ln -sf /opt/antigravity/bin/agy /usr/local/bin/agy
+
 # Instrumentation is baked in (not bind-mounted) so the same image works
 # against any Docker daemon — local or remote.
 COPY src/supervisor.cjs /aegis/supervisor.cjs

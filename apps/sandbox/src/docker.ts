@@ -75,6 +75,8 @@ export interface RunAgentOptions {
   projectLabel?: string;
   /** Laptop user's uid: agents run as it so mounted files stay user-owned. */
   agentUid: number;
+  /** Extra bind mounts ("src:dest[:ro]") — curated home-profile slices. */
+  extraMounts?: string[];
 }
 
 export async function runAgent(options: RunAgentOptions): Promise<void> {
@@ -93,11 +95,13 @@ export async function runAgent(options: RunAgentOptions): Promise<void> {
     "--label", `aegis.interactive=${options.interactive ? "1" : "0"}`,
     "--label", `aegis.command=${options.commandLabel}`,
     "--label", `aegis.agentUid=${options.agentUid}`,
+    "--label", `aegis.home=${options.extraMounts?.length ? "1" : "0"}`,
     ...(options.projectPath
       ? ["--label", `aegis.project=${options.projectLabel || ""}`, "--label", `aegis.projectPath=${options.projectPath}`, "--label", `aegis.projectRo=${options.readOnly ? "1" : "0"}`]
       : []),
     "--add-host=host.docker.internal:host-gateway",
     "-v", workspace,
+    ...(options.extraMounts || []).map((mount) => ["-v", mount]).flat(),
     "-w", "/workspace",
     "-e", `AEGIS_SANDBOX_ID=${options.id}`,
     "-e", `AEGIS_EVENT_URL=${options.eventUrl}`,
@@ -195,6 +199,7 @@ export interface AdoptedSandbox {
   command: string[];
   running: boolean;
   project?: { name: string; path: string; readOnly?: boolean };
+  home?: boolean;
   agentUid?: number;
 }
 
@@ -204,11 +209,11 @@ export interface AdoptedSandbox {
  * terminals and lifecycle controls would be orphaned.
  */
 export async function listAegisSandboxes(): Promise<AdoptedSandbox[]> {
-  const output = await docker(["ps", "-a", "--filter", "label=aegis.sandbox", "--format", "{{.Names}}\t{{.State}}\t{{.Label \"aegis.name\"}}\t{{.Label \"aegis.mode\"}}\t{{.Label \"aegis.interactive\"}}\t{{.Label \"aegis.command\"}}\t{{.Label \"aegis.project\"}}\t{{.Label \"aegis.projectPath\"}}\t{{.Label \"aegis.projectRo\"}}\t{{.Label \"aegis.agentUid\"}}"]);
+  const output = await docker(["ps", "-a", "--filter", "label=aegis.sandbox", "--format", "{{.Names}}\t{{.State}}\t{{.Label \"aegis.name\"}}\t{{.Label \"aegis.mode\"}}\t{{.Label \"aegis.interactive\"}}\t{{.Label \"aegis.command\"}}\t{{.Label \"aegis.project\"}}\t{{.Label \"aegis.projectPath\"}}\t{{.Label \"aegis.projectRo\"}}\t{{.Label \"aegis.agentUid\"}}\t{{.Label \"aegis.home\"}}"]);
   const adopted: AdoptedSandbox[] = [];
   for (const line of output.split("\n")) {
     if (!line.trim()) continue;
-    const [containerName, state, name, mode, interactive, command, project, projectPath, projectRo, agentUid] = line.split("\t");
+    const [containerName, state, name, mode, interactive, command, project, projectPath, projectRo, agentUid, home] = line.split("\t");
     if (!containerName?.startsWith("aegis-sb-") || containerName.endsWith("-net")) continue;
     const sandbox: AdoptedSandbox = {
       id: containerName.replace(/^aegis-sb-/, ""),
@@ -217,6 +222,7 @@ export async function listAegisSandboxes(): Promise<AdoptedSandbox[]> {
       interactive: interactive === "1",
       command: command ? command.split(" ").filter(Boolean) : [],
       running: state === "running",
+      ...(home === "1" ? { home: true } : {}),
     };
     if (projectPath) {
       sandbox.project = { name: project || projectPath, path: projectPath, ...(projectRo === "1" ? { readOnly: true } : {}) };
@@ -326,9 +332,13 @@ export interface ExecSession {
 export async function execShell(
   id: string,
   handlers: { onOutput: (chunk: Buffer) => void; onExit: () => void },
+  profileEnv: Record<string, string> = {},
 ): Promise<ExecSession> {
   const { agent } = imageName(id);
   const container = api().getContainer(agent);
+  const uid = profileEnv.AEGIS_AGENT_UID || "1000";
+  // The image's default PATH, with the home-profile package dirs first.
+  const basePath = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
   const execOptions: Dockerode.ExecCreateOptions = {
     Cmd: ["bash"],
     AttachStdin: true,
@@ -336,8 +346,13 @@ export async function execShell(
     AttachStderr: true,
     Tty: true,
     WorkingDir: "/workspace",
-    User: "1000:1000",
-    Env: ["HOME=/home/agent", "TERM=xterm-256color"],
+    User: `${uid}:${uid}`,
+    Env: [
+      "HOME=/home/agent",
+      "TERM=xterm-256color",
+      ...(profileEnv.AEGIS_EXTRA_PATH ? [`PATH=${profileEnv.AEGIS_EXTRA_PATH}:${basePath}`] : []),
+      ...(profileEnv.SSH_AUTH_SOCK ? [`SSH_AUTH_SOCK=${profileEnv.SSH_AUTH_SOCK}`] : []),
+    ],
   };
   // dockerode creates the exec on container.exec(options); the bundled
   // typings model the legacy callback form, so retype the call explicitly.

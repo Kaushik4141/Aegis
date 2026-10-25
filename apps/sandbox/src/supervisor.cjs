@@ -195,6 +195,10 @@ function main() {
   childEnv.HOME = "/home/agent";
   childEnv.USER = "agent";
   childEnv.TERM = childEnv.TERM || "xterm";
+  // Home-profile sessions expose the user's global package dirs first on PATH.
+  if (process.env.AEGIS_EXTRA_PATH) {
+    childEnv.PATH = `${process.env.AEGIS_EXTRA_PATH}:${childEnv.PATH || ""}`;
+  }
 
   log("start", `${isInteractive ? "(interactive workspace)" : effectiveCommand.join(" ")} (sandbox ${SANDBOX_ID})`);
   emit("lifecycle", { kind: "started", command: isInteractive ? [] : effectiveCommand, interactive: isInteractive, mode: process.env.AEGIS_MODE || "observe" });
