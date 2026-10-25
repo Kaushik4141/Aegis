@@ -1170,21 +1170,53 @@ function sandboxTerminalUrl(sandboxId: string): string {
   return `${protocol}://${window.location.hostname}:${process.env.NEXT_PUBLIC_SANDBOX_WS_PORT || "8788"}/sandboxes/${target}/terminal`;
 }
 
+/**
+ * Copy text in any host webview: the async clipboard API is denied in some
+ * embedded browsers, so fall back to the legacy execCommand path before
+ * giving up (callers then surface the text another way).
+ */
+async function copyText(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch { /* embedded webview may deny the async API */ }
+  try {
+    const area = document.createElement("textarea");
+    area.value = text;
+    area.setAttribute("readonly", "");
+    area.style.position = "fixed";
+    area.style.top = "-1000px";
+    document.body.appendChild(area);
+    area.select();
+    area.setSelectionRange(0, text.length);
+    const copied = document.execCommand("copy");
+    document.body.removeChild(area);
+    return copied;
+  } catch {
+    return false;
+  }
+}
+
 function SandboxTerminal({
   sandboxId,
   initialInput,
   onClosed,
+  onLink,
   height = 430,
 }: {
   sandboxId: string;
   /** Sent once when the session opens — used to auto-start an agent (e.g. "claude\n"). */
   initialInput?: string;
   onClosed: () => void;
+  /** Invoked when a clicked link could not be opened (embedded webviews). */
+  onLink?: (uri: string) => void;
   height?: number;
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const closedRef = useRef(onClosed);
   closedRef.current = onClosed;
+  const linkRef = useRef(onLink);
+  linkRef.current = onLink;
   const initialRef = useRef(initialInput);
   // Only the first initialInput per sandbox session matters; later prop
   // changes must not restart the terminal.
@@ -1209,14 +1241,28 @@ function SandboxTerminal({
       term = new Terminal({ fontSize: 11.5, cursorBlink: true, fontFamily: "var(--font-mono, monospace)", theme: { background: "#0b1020" } });
       fit = new FitAddon();
       term.loadAddon(fit);
-      // Auth-URL ergonomics: click a link to open it on the laptop (OAuth
-      // flows), and Ctrl/Cmd+Shift+C copies the selection.
-      term.loadAddon(new WebLinksAddon((event, uri) => window.open(uri, "_blank", "noopener")));
+      // Auth-URL ergonomics: click a link to open it on the laptop. Embedded
+      // webviews block popups ("opener could not be cleared"), so a blocked
+      // open copies the URL instead; Ctrl/Cmd+Shift+C copies the selection
+      // through the same clipboard fallback chain.
+      term.loadAddon(
+        new WebLinksAddon(async (_event, uri) => {
+          const opened = window.open(uri, "_blank");
+          if (!opened) {
+            const copied = await copyText(uri);
+            linkRef.current?.(copied ? `Link copied — paste into your browser: ${uri}` : `Open this link in your browser: ${uri}`);
+          }
+        }),
+      );
       term.attachCustomKeyEventHandler((event) => {
         if (event.type === "keydown" && (event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === "c") {
           const selection = term?.getSelection();
-          if (selection) void navigator.clipboard?.writeText(selection);
-          return false;
+          if (selection) {
+            void copyText(selection).then((copied) => {
+              if (!copied) linkRef.current?.(`Copy blocked — select and copy manually: ${selection}`);
+            });
+            return false;
+          }
         }
         return true;
       });
@@ -1282,6 +1328,7 @@ type SandboxNodeData = {
   initialCommand?: string;
   onInspect: (id: string) => void;
   onSessionEnded: (id: string) => void;
+  onLink?: (message: string) => void;
 };
 
 const CANVAS_POSITIONS_KEY = "aegis-canvas-positions";
@@ -1300,7 +1347,7 @@ const SANDBOX_TEMPLATES = [
  * typing, and scrolling stay inside the terminal).
  */
 function SandboxWindowNode({ data, selected }: NodeProps) {
-  const { sandbox, hasAlert, initialCommand, onInspect, onSessionEnded } = data as SandboxNodeData;
+  const { sandbox, hasAlert, initialCommand, onInspect, onSessionEnded, onLink } = data as SandboxNodeData;
   const running = sandbox.status === "running";
   return (
     <div
@@ -1339,6 +1386,7 @@ function SandboxWindowNode({ data, selected }: NodeProps) {
             sandboxId={sandbox.id}
             initialInput={initialCommand || undefined}
             onClosed={() => onSessionEnded(sandbox.id)}
+            onLink={onLink}
             height={330}
           />
         ) : (
@@ -1375,6 +1423,7 @@ function SandboxesView({ notify }: { notify: (message: string) => void }) {
   const [serviceUp, setServiceUp] = useState(true);
   const [nodes, setNodes] = useState<Node[]>([]);
   const [alertIds, setAlertIds] = useState<string[]>([]);
+  const [linkBar, setLinkBar] = useState<string | null>(null);
   const initialCommands = useRef<Record<string, string>>({});
   const positions = useRef<Record<string, { x: number; y: number }>>({});
 
@@ -1439,6 +1488,13 @@ function SandboxesView({ notify }: { notify: (message: string) => void }) {
     return () => window.clearInterval(timer);
   }, [refresh]);
 
+  // Terminal link fallback: embedded webviews block popups and may deny the
+  // async clipboard API; the URL lands in a dismissible bar whose input is
+  // always selectable for a manual copy.
+  const handleTerminalLink = useCallback((message: string) => {
+    setLinkBar(message);
+  }, []);
+
   // Mirror sandboxes into canvas nodes; existing node positions win so
   // windows never jump when the poll refreshes their data.
   useEffect(() => {
@@ -1456,11 +1512,12 @@ function SandboxesView({ notify }: { notify: (message: string) => void }) {
             initialCommand: initialCommands.current[sandbox.id] ?? "",
             onInspect: (id: string) => setSelectedId(id),
             onSessionEnded: () => void refresh(),
+            onLink: handleTerminalLink,
           },
         };
       }),
     );
-  }, [sandboxes, alertIds, refresh]);
+  }, [sandboxes, alertIds, refresh, handleTerminalLink]);
 
   const onNodesChange = useCallback((changes: NodeChange[]) => {
     setNodes((current) => applyNodeChanges(changes, current));
@@ -1690,6 +1747,29 @@ function SandboxesView({ notify }: { notify: (message: string) => void }) {
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_330px]">
+        {linkBar && (
+          <div className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 xl:col-span-2">
+            <Link2 size={14} className="shrink-0 text-amber-600" />
+            <input
+              readOnly
+              value={linkBar}
+              onFocus={(event) => event.currentTarget.select()}
+              onClick={(event) => event.currentTarget.select()}
+              className="min-w-0 flex-1 rounded-md border border-amber-200 bg-white px-2 py-1 font-mono text-[10px] text-slate-700"
+            />
+            <button
+              type="button"
+              onClick={() => void copyText(linkBar).then((copied) => copied && setLinkBar(null))}
+              className="button-primary shrink-0"
+            >
+              <Copy size={12} />
+              Copy
+            </button>
+            <button type="button" onClick={() => setLinkBar(null)} className="shrink-0 text-slate-400 hover:text-slate-600">
+              <X size={14} />
+            </button>
+          </div>
+        )}
         <div className="flow-shell dot-grid relative h-[760px] min-h-[560px] overflow-hidden rounded-2xl border border-slate-200 bg-white/55 shadow-panel">
           <ReactFlow
             nodes={nodes}
