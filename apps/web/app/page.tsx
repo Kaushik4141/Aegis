@@ -17,14 +17,6 @@ const NAV: Array<{ id: View; label: string; icon: React.ReactNode }> = [
 export default function Home() {
   const [view, setView] = useState<View>("agents");
   const [toast, setToast] = useState<string | null>(null);
-  // Tabs stay mounted once visited (hidden, not unmounted): terminal
-  // sessions and canvas state survive switching to Activity/Approvals.
-  const [visited, setVisited] = useState<View[]>(["agents"]);
-
-  const switchTo = useCallback((next: View) => {
-    setView(next);
-    setVisited((current) => (current.includes(next) ? current : [...current, next]));
-  }, []);
 
   useEffect(() => {
     const handleUnhandledError = (event: ErrorEvent) => {
@@ -70,7 +62,7 @@ export default function Home() {
               <button
                 key={entry.id}
                 type="button"
-                onClick={() => switchTo(entry.id)}
+                onClick={() => setView(entry.id)}
                 className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold ${
                   view === entry.id ? "bg-slate-100 text-slate-900" : "text-slate-500 hover:bg-slate-50"
                 }`}
@@ -85,7 +77,7 @@ export default function Home() {
           <div className="grid h-8 w-8 place-items-center rounded-full bg-gradient-to-br from-violet-500 to-blue-500 text-[10px] font-bold text-white">AG</div>
           <button
             type="button"
-            onClick={() => switchTo("settings")}
+            onClick={() => setView("settings")}
             title="Settings — MCP connections & infrastructure"
             className={`grid h-9 w-9 place-items-center rounded-lg ${view === "settings" ? "bg-slate-100 text-slate-900" : "text-slate-400 hover:bg-slate-50 hover:text-slate-600"}`}
           >
@@ -100,7 +92,7 @@ export default function Home() {
             <button
               key={entry.id}
               type="button"
-              onClick={() => switchTo(entry.id)}
+              onClick={() => setView(entry.id)}
               title={entry.label}
               className={`grid h-9 w-9 place-items-center rounded-lg ${
                 view === entry.id ? "bg-slate-100 text-slate-900" : "text-slate-400 hover:bg-slate-50 hover:text-slate-600"
@@ -115,24 +107,10 @@ export default function Home() {
         </aside>
 
         <section className="min-w-0 flex-1 p-4 lg:p-7">
-          <div className={view === "agents" ? "" : "hidden"}>
-            <AgentsView active={view === "agents"} notify={notify} />
-          </div>
-          {visited.includes("activity") && (
-            <div className={view === "activity" ? "" : "hidden"}>
-              <ActivityView />
-            </div>
-          )}
-          {visited.includes("approvals") && (
-            <div className={view === "approvals" ? "" : "hidden"}>
-              <ApprovalsView notify={notify} />
-            </div>
-          )}
-          {visited.includes("settings") && (
-            <div className={view === "settings" ? "" : "hidden"}>
-              <SettingsView notify={notify} />
-            </div>
-          )}
+          {view === "agents" && <AgentsView notify={notify} />}
+          {view === "activity" && <ActivityView />}
+          {view === "approvals" && <ApprovalsView notify={notify} />}
+          {view === "settings" && <SettingsView notify={notify} />}
         </section>
       </div>
 
