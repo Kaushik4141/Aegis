@@ -3,27 +3,32 @@
 @tailwind utilities;
 
 :root {
-  color-scheme: light;
+  color-scheme: dark;
 }
 
 * {
   box-sizing: border-box;
 }
 
-html, body {
-  min-height: 100%;
-}
-
+html,
 body {
+  min-height: 100%;
   margin: 0;
-  color: #0f172a;
-  background-color: #f8fafc;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  padding: 0;
+  background-color: #050505;
+  color: #ededed;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* React Flow canvas styling - clean architectural design */
+/* React Flow Canvas - Clean Minimalist Dark Surface */
+.flow-shell {
+  background: #080808 !important;
+  background-image: radial-gradient(circle, #1a1a1a 1px, transparent 1px) !important;
+  background-size: 20px 20px !important;
+}
+
 .flow-shell .react-flow__pane {
   cursor: default;
 }
@@ -32,145 +37,150 @@ body {
   display: none;
 }
 
-.flow-shell .react-flow__edge-path {
-  stroke-linecap: round;
-}
-
 .flow-shell .react-flow__handle {
-  width: 8px;
-  height: 8px;
-  border: 2px solid #ffffff;
-  background: #64748b;
+  width: 7px;
+  height: 7px;
+  border: 1px solid #000000;
+  background: #ffffff;
   border-radius: 50%;
 }
 
 .flow-shell .react-flow__controls {
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
+  border: 1px solid #222222;
+  border-radius: 4px;
   overflow: hidden;
-  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05);
+  background: #0d0d0d;
 }
 
 .flow-shell .react-flow__controls-button {
-  background: #ffffff;
-  border-bottom: 1px solid #f1f5f9;
-  color: #475569;
+  background: #0d0d0d;
+  border-bottom: 1px solid #1a1a1a;
+  color: #888888;
+  fill: #888888;
 }
 
 .flow-shell .react-flow__controls-button:hover {
-  background: #f8fafc;
-  color: #0f172a;
+  background: #1a1a1a;
+  color: #ffffff;
+  fill: #ffffff;
 }
 
 .flow-shell .react-flow__minimap {
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  background: #ffffff;
-  overflow: hidden;
+  border: 1px solid #222222;
+  border-radius: 4px;
+  background: #0a0a0a;
 }
 
-/* Form & Input controls */
+/* Form Controls - Crisp Black & White */
 .form-label {
   display: block;
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 500;
-  color: #334155;
-  margin-bottom: 6px;
+  color: #888888;
+  margin-bottom: 5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-family: var(--font-mono, monospace);
 }
 
 .form-input {
   width: 100%;
-  border: 1px solid #cbd5e1;
-  border-radius: 6px;
-  background: #ffffff;
-  color: #0f172a;
+  border: 1px solid #222222;
+  border-radius: 4px;
+  background: #0a0a0a;
+  color: #ededed;
   padding: 8px 12px;
   font-size: 13px;
   line-height: 1.4;
   outline: none;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  transition: border-color 0.12s ease;
 }
 
 .form-input:focus {
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+  border-color: #ffffff;
+  background: #0e0e0e;
 }
 
 .form-input::placeholder {
-  color: #94a3b8;
+  color: #444444;
 }
 
-/* Buttons */
+select.form-input option {
+  background: #0f0f0f;
+  color: #ededed;
+}
+
+/* Typographic Buttons - High Contrast & Tactile */
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
-  border-radius: 6px;
-  padding: 8px 14px;
-  font-size: 13px;
-  font-weight: 500;
-  line-height: 1.4;
+  border-radius: 4px;
+  padding: 7px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1.3;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all 0.12s ease;
   border: 1px solid transparent;
+  user-select: none;
 }
 
 .btn-primary {
-  background: #0f172a;
-  color: #ffffff;
-  border-color: #0f172a;
+  background: #ffffff;
+  color: #000000;
+  border-color: #ffffff;
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: #1e293b;
-  border-color: #1e293b;
+  background: #e5e5e5;
+  border-color: #e5e5e5;
 }
 
 .btn-secondary {
-  background: #ffffff;
-  color: #334155;
-  border-color: #cbd5e1;
+  background: #111111;
+  color: #ededed;
+  border-color: #262626;
 }
 
 .btn-secondary:hover:not(:disabled) {
-  background: #f8fafc;
-  color: #0f172a;
-  border-color: #94a3b8;
+  background: #1a1a1a;
+  border-color: #383838;
 }
 
 .btn-danger {
-  background: #fef2f2;
-  color: #dc2626;
-  border-color: #fecaca;
+  background: #140d0d;
+  color: #f87171;
+  border-color: #3b1d1d;
 }
 
 .btn-danger:hover:not(:disabled) {
-  background: #fee2e2;
-  color: #b91c1c;
-  border-color: #fca5a5;
+  background: #1f1212;
+  border-color: #592525;
 }
 
 .btn-success {
-  background: #15803d;
-  color: #ffffff;
-  border-color: #15803d;
+  background: #0d140e;
+  color: #4ade80;
+  border-color: #1a3820;
 }
 
 .btn-success:hover:not(:disabled) {
-  background: #166534;
-  border-color: #166534;
+  background: #121f14;
+  border-color: #24522d;
 }
 
 .btn:disabled {
-  opacity: 0.5;
+  opacity: 0.35;
   cursor: not-allowed;
 }
 
-/* Minimalist scrollbars */
+/* Minimalist Scrollbars */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
 }
 
 ::-webkit-scrollbar-track {
@@ -178,10 +188,10 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 3px;
+  background: #222222;
+  border-radius: 2px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: #333333;
 }
