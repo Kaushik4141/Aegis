@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect } from "react";
-import { RefreshCw, ShieldAlert } from "lucide-react";
 
 export default function ErrorBoundary({
   error,
@@ -11,7 +10,6 @@ export default function ErrorBoundary({
   reset: () => void;
 }) {
   useEffect(() => {
-    // Log client error safely
     console.warn("Aegis control plane caught client event/error:", error);
   }, [error]);
 
@@ -22,20 +20,21 @@ export default function ErrorBoundary({
     : rawMessage;
 
   return (
-    <div className="flex min-h-[500px] flex-col items-center justify-center p-8 text-center">
-      <div className="max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-panel">
-        <div className="mx-auto grid h-12 w-12 place-items-center rounded-xl bg-blue-50 text-blue-600">
-          <ShieldAlert size={22} />
-        </div>
-        <h2 className="mt-4 text-base font-extrabold text-slate-900">Control Plane Sync Notice</h2>
-        <p className="mt-2 text-xs leading-5 text-slate-500">{displayMessage}</p>
+    <div className="flex min-h-[500px] flex-col items-center justify-center p-8 text-center bg-[#050505] font-mono text-xs">
+      <div className="max-w-md rounded border border-[#222222] bg-[#0a0a0a] p-8">
+        <span className="inline-block text-[10px] text-[#888888] border border-[#222222] px-2 py-0.5 rounded uppercase tracking-wider mb-3">
+          [ GATEWAY NOTICE ]
+        </span>
+        <h2 className="text-sm font-bold text-[#ffffff] uppercase tracking-wide">
+          CONTROL PLANE SYNC NOTICE
+        </h2>
+        <p className="mt-2 text-xs leading-relaxed text-[#888888]">{displayMessage}</p>
         <button
           type="button"
           onClick={() => reset()}
-          className="button-primary mx-auto mt-5"
+          className="btn btn-primary mx-auto mt-6"
         >
-          <RefreshCw size={14} />
-          Resume Dashboard
+          RESUME DASHBOARD
         </button>
       </div>
     </div>

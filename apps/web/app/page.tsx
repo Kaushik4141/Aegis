@@ -13,44 +13,6 @@ import {
   type NodeProps,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import {
-  Activity,
-  AlertCircle,
-  AlertTriangle,
-  ArrowUpRight,
-  Bot,
-  Check,
-  CheckCircle2,
-  ChevronRight,
-  Clock,
-  Cloud,
-  Code2,
-  Copy,
-  Database,
-  ExternalLink,
-  FileText,
-  Filter,
-  Github,
-  KeyRound,
-  Layers,
-  Link2,
-  Lock,
-  Pause,
-  Play,
-  Plus,
-  RefreshCw,
-  Search,
-  Server,
-  Shield,
-  ShieldAlert,
-  ShieldCheck,
-  Terminal,
-  Trash2,
-  User,
-  X,
-  XCircle,
-  Zap,
-} from "lucide-react";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 // --- Types ---
@@ -96,16 +58,6 @@ interface Connection {
   secretKeys: string[];
   hasSecrets: boolean;
   token?: string;
-}
-
-interface OAuthStatus {
-  configured?: boolean;
-  supported?: boolean;
-  authorized?: boolean;
-  pending?: boolean;
-  error?: string;
-  tokenExpiresAt?: string;
-  clientRegistration?: string;
 }
 
 interface Tool {
@@ -157,6 +109,109 @@ const emptyForm: FormState = {
   auth: "",
 };
 
+// Initial realistic fallback actions in pure monochrome style
+const INITIAL_DEMO_ACTIONS: Action[] = [
+  {
+    id: "act_001",
+    actorId: "antigravity",
+    tool: "d1_query",
+    target: "target_cloudflare_d1",
+    targetTitle: "Cloudflare D1",
+    resource: "enterprise.customers",
+    summary: "SELECT * FROM enterprise_customers WHERE status = 'active' LIMIT 50",
+    state: "allowed",
+    score: 12,
+    timestamp: "18:22:10",
+    payload: {
+      query: "SELECT * FROM enterprise_customers WHERE status = 'active' LIMIT 50",
+      caller: "migration_worker_01",
+      mode: "read_only",
+    },
+  },
+  {
+    id: "act_002",
+    actorId: "antigravity",
+    tool: "s3_export",
+    target: "target_s3",
+    targetTitle: "S3 Storage",
+    resource: "customer-pii",
+    summary: "High-volume export requested on customer-pii encrypted partition",
+    state: "pending_approval",
+    score: 84,
+    timestamp: "18:23:05",
+    payload: {
+      bucket: "customer-pii",
+      operation: "batch_export",
+      recordCount: 14200,
+      destination: "external_egress_stream",
+    },
+  },
+  {
+    id: "act_003",
+    actorId: "claude-desktop",
+    tool: "git_push",
+    target: "target_git",
+    targetTitle: "Git Repository",
+    resource: "data/acme-repo",
+    summary: "Commit verified schema migration: add indexing on customer_id",
+    state: "approved",
+    score: 18,
+    timestamp: "18:20:18",
+    payload: {
+      branch: "main",
+      commitMessage: "feat: add index on customer_id",
+      filesChanged: 2,
+    },
+  },
+  {
+    id: "act_004",
+    actorId: "cursor-agent",
+    tool: "d1_drop_table",
+    target: "target_cloudflare_d1",
+    targetTitle: "Cloudflare D1",
+    resource: "enterprise.invoices",
+    summary: "Attempted DROP TABLE enterprise_invoices detected in prompt context",
+    state: "blocked",
+    score: 96,
+    timestamp: "18:18:52",
+    payload: {
+      statement: "DROP TABLE enterprise_invoices CASCADE;",
+      originPrompt: "Clean up all existing invoice history before running insert",
+      riskLevel: "CRITICAL",
+    },
+  },
+];
+
+const INITIAL_DEMO_AUDIT: AuditEvent[] = [
+  {
+    id: "aud_01",
+    type: "POLICY_INTERCEPT",
+    actionId: "act_002",
+    timestamp: new Date(Date.now() - 1000 * 60 * 2).toISOString(),
+    actorId: "aegis_firewall_rule_s3",
+    reason: "PII egress threshold exceeded (14,200 records). Quarantined for operator clearance.",
+    toStatus: "pending_approval",
+  },
+  {
+    id: "aud_02",
+    type: "CRITICAL_BLOCK",
+    actionId: "act_004",
+    timestamp: new Date(Date.now() - 1000 * 60 * 6).toISOString(),
+    actorId: "sentinel_destruct_shield",
+    reason: "Prohibited destructive operation: DROP TABLE in production boundary.",
+    toStatus: "blocked",
+  },
+  {
+    id: "aud_03",
+    type: "OPERATOR_APPROVAL",
+    actionId: "act_003",
+    timestamp: new Date(Date.now() - 1000 * 60 * 9).toISOString(),
+    actorId: "operator",
+    reason: "Schema migration verified against staging D1 database.",
+    toStatus: "approved",
+  },
+];
+
 // --- Helper Functions ---
 
 function normalizeActorName(actorId?: string): string {
@@ -176,7 +231,7 @@ function apiAction(raw: Record<string, unknown>, connections: Connection[] = [])
       actorId: "antigravity",
       tool: "action",
       target: "target_cloudflare_d1",
-      targetTitle: "Cloudflare D1 (Cloud)",
+      targetTitle: "Cloudflare D1",
       resource: "enterprise",
       summary: "Live gateway action",
       state: "idle",
@@ -197,10 +252,10 @@ function apiAction(raw: Record<string, unknown>, connections: Connection[] = [])
 
   if (text.includes("customer") || text.includes("billing") || text.includes("sql") || text.includes("d1")) {
     target = "target_cloudflare_d1";
-    targetTitle = "Cloudflare D1 (Cloud)";
+    targetTitle = "Cloudflare D1";
   } else if (text.includes("s3") || text.includes("bucket") || text.includes("file") || text.includes("export")) {
     target = "target_s3";
-    targetTitle = "Local S3 Storage";
+    targetTitle = "S3 Storage";
   } else if (text.includes("git") || text.includes("repo") || text.includes("commit") || text.includes("branch")) {
     target = "target_git";
     targetTitle = "Git Repository";
@@ -237,35 +292,77 @@ function apiAction(raw: Record<string, unknown>, connections: Connection[] = [])
     resource,
     summary: String(analysis.reason || raw.summary || raw.note || `${tool} on ${resource}`),
     state,
-    score: typeof raw.score === "number" ? raw.score : typeof analysis.riskScore === "number" ? analysis.riskScore : state === "blocked" ? 92 : state === "pending_approval" ? 75 : 10,
-    timestamp: raw.createdAt ? new Date(String(raw.createdAt)).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "Just now",
+    score:
+      typeof raw.score === "number"
+        ? raw.score
+        : typeof analysis.riskScore === "number"
+        ? analysis.riskScore
+        : state === "blocked"
+        ? 92
+        : state === "pending_approval"
+        ? 75
+        : 10,
+    timestamp: raw.createdAt
+      ? new Date(String(raw.createdAt)).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+      : "Just now",
     payload: raw.payload || raw.params || raw.args || null,
   };
 }
 
-// --- Status Badge Component ---
+// --- Typographic Status Badge (Zero Lucide Icons) ---
 
-function StatusBadge({ state, dot = true }: { state: GatewayState; dot?: boolean }) {
-  const styles: Record<GatewayState, { bg: string; text: string; border: string; dot: string; label: string }> = {
-    approved: { bg: "bg-emerald-50", text: "text-emerald-700", border: "border-emerald-200", dot: "bg-emerald-500", label: "Approved" },
-    allowed: { bg: "bg-emerald-50", text: "text-emerald-700", border: "border-emerald-200", dot: "bg-emerald-500", label: "Allowed" },
-    blocked: { bg: "bg-rose-50", text: "text-rose-700", border: "border-rose-200", dot: "bg-rose-500", label: "Blocked" },
-    pending_approval: { bg: "bg-amber-50", text: "text-amber-800", border: "border-amber-200", dot: "bg-amber-500", label: "Pending Review" },
-    frozen: { bg: "bg-blue-50", text: "text-blue-700", border: "border-blue-200", dot: "bg-blue-500", label: "Frozen" },
-    idle: { bg: "bg-slate-100", text: "text-slate-600", border: "border-slate-200", dot: "bg-slate-400", label: "Idle" },
+function StatusBadge({ state }: { state: GatewayState }) {
+  const styles: Record<GatewayState, { bg: string; text: string; border: string; label: string }> = {
+    approved: {
+      bg: "bg-[#0a0a0a]",
+      text: "text-[#ededed]",
+      border: "border-[#333333]",
+      label: "APPROVED",
+    },
+    allowed: {
+      bg: "bg-[#0a0a0a]",
+      text: "text-[#a1a1a1]",
+      border: "border-[#222222]",
+      label: "ALLOWED",
+    },
+    blocked: {
+      bg: "bg-[#140d0d]",
+      text: "text-[#f87171]",
+      border: "border-[#381a1a]",
+      label: "BLOCKED",
+    },
+    pending_approval: {
+      bg: "bg-[#14120a]",
+      text: "text-[#fbbf24]",
+      border: "border-[#3d3314]",
+      label: "PENDING",
+    },
+    frozen: {
+      bg: "bg-[#0a0f14]",
+      text: "text-[#67e8f9]",
+      border: "border-[#162e3d]",
+      label: "FROZEN",
+    },
+    idle: {
+      bg: "bg-[#0a0a0a]",
+      text: "text-[#666666]",
+      border: "border-[#1a1a1a]",
+      label: "IDLE",
+    },
   };
 
   const style = styles[state] || styles.idle;
 
   return (
-    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-medium border ${style.bg} ${style.text} ${style.border}`}>
-      {dot && <span className={`w-1.5 h-1.5 rounded-full ${style.dot}`} />}
-      {style.label}
+    <span
+      className={`inline-block font-mono text-[10px] tracking-wider px-2 py-0.5 rounded border ${style.bg} ${style.text} ${style.border}`}
+    >
+      [{style.label}]
     </span>
   );
 }
 
-// --- ReactFlow Custom Nodes ---
+// --- Minimalist ReactFlow Custom Nodes (Clean Typography, No Icon Bloat) ---
 
 interface IdentityData extends Record<string, unknown> {
   name: string;
@@ -282,7 +379,6 @@ interface TargetData extends Record<string, unknown> {
   id: string;
   title: string;
   subtitle: string;
-  icon: React.ReactNode;
   detail: string;
   isActive?: boolean;
   state?: GatewayState;
@@ -290,20 +386,15 @@ interface TargetData extends Record<string, unknown> {
 
 function IdentityFlowNode({ data }: NodeProps<Node<IdentityData>>) {
   return (
-    <div className="bg-white border border-slate-300 rounded-lg shadow-sm p-3.5 w-[210px]">
-      <Handle type="source" position={Position.Right} className="!bg-slate-400" />
-      <div className="flex items-center gap-2.5">
-        <div className="w-8 h-8 rounded-md bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-700 shrink-0">
-          <User size={16} />
-        </div>
-        <div className="min-w-0">
-          <p className="text-xs font-semibold text-slate-900 truncate">{data.name}</p>
-          <p className="text-[11px] text-slate-500 truncate">{data.email}</p>
-        </div>
+    <div className="bg-[#0a0a0a] border border-[#222222] rounded p-3 w-[220px] transition-colors hover:border-[#444444]">
+      <Handle type="source" position={Position.Right} className="!bg-[#ffffff] !w-2 !h-2 !border !border-[#000000]" />
+      <div className="flex items-center justify-between pb-1.5 border-b border-[#1a1a1a] text-[10px] font-mono text-[#666666]">
+        <span>ORIGIN</span>
+        <span className="text-[#ededed]">LOCAL SESSION</span>
       </div>
-      <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
-        <span>Operator Session</span>
-        <span className="text-emerald-600 font-medium">Local</span>
+      <div className="mt-2 font-mono">
+        <p className="text-xs font-semibold text-[#ffffff] truncate">{data.name}</p>
+        <p className="text-[10px] text-[#777777] truncate mt-0.5">{data.email}</p>
       </div>
     </div>
   );
@@ -313,48 +404,47 @@ function AgentFlowNode({ data }: NodeProps<Node<AgentData>>) {
   const isAlert = data.state === "pending_approval" || data.state === "blocked" || data.state === "frozen";
 
   return (
-    <div className={`bg-white border rounded-lg shadow-sm p-3.5 w-[230px] transition-colors ${isAlert ? "border-amber-400 ring-2 ring-amber-100" : "border-slate-300"}`}>
-      <Handle type="target" position={Position.Left} className="!bg-slate-400" />
-      <Handle type="source" position={Position.Right} className="!bg-slate-400" />
-      <div className="flex items-center gap-2.5">
-        <div className="w-8 h-8 rounded-md bg-slate-900 flex items-center justify-center text-white shrink-0">
-          <Bot size={16} />
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-semibold text-slate-900 truncate">{data.agentName}</p>
-            {isAlert && <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />}
-          </div>
-          <p className="text-[11px] text-slate-500 truncate">{data.activeTargetTitle ? `Target: ${data.activeTargetTitle}` : "Active Client"}</p>
-        </div>
+    <div
+      className={`bg-[#0a0a0a] border rounded p-3 w-[240px] transition-colors ${
+        isAlert ? "border-[#ffffff] ring-1 ring-[#ffffff]/20" : "border-[#222222] hover:border-[#444444]"
+      }`}
+    >
+      <Handle type="target" position={Position.Left} className="!bg-[#ffffff] !w-2 !h-2 !border !border-[#000000]" />
+      <Handle type="source" position={Position.Right} className="!bg-[#ffffff] !w-2 !h-2 !border !border-[#000000]" />
+      <div className="flex items-center justify-between pb-1.5 border-b border-[#1a1a1a] text-[10px] font-mono text-[#666666]">
+        <span>GATEWAY FIREWALL</span>
+        <span className="text-[#ffffff]">v2.4</span>
       </div>
-      <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between">
-        <span className="text-[11px] text-slate-500">Firewall status</span>
-        <StatusBadge state={data.state} />
+      <div className="mt-2 font-mono">
+        <div className="flex items-center justify-between">
+          <p className="text-xs font-semibold text-[#ffffff] truncate">{data.agentName}</p>
+          <StatusBadge state={data.state} />
+        </div>
+        <p className="text-[10px] text-[#777777] truncate mt-1">
+          {data.activeTargetTitle ? `Target: ${data.activeTargetTitle}` : "Active Stream"}
+        </p>
       </div>
     </div>
   );
 }
 
 function TargetFlowNode({ data }: NodeProps<Node<TargetData>>) {
-  const isAlert = data.isActive && (data.state === "pending_approval" || data.state === "blocked");
-
   return (
-    <div className={`bg-white border rounded-lg shadow-sm p-3 w-[240px] transition-all ${data.isActive ? "border-blue-500 ring-2 ring-blue-50" : "border-slate-300"} ${isAlert ? "border-amber-400 ring-2 ring-amber-100" : ""}`}>
-      <Handle type="target" position={Position.Left} className="!bg-slate-400" />
-      <div className="flex items-start gap-2.5">
-        <div className={`w-7 h-7 rounded-md border flex items-center justify-center shrink-0 mt-0.5 ${data.isActive ? "bg-blue-50 border-blue-200 text-blue-700" : "bg-slate-50 border-slate-200 text-slate-600"}`}>
-          {data.icon}
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center justify-between gap-1">
-            <p className="text-xs font-semibold text-slate-900 truncate">{data.title}</p>
-            {data.isActive && <span className="text-[10px] font-medium text-blue-600 bg-blue-50 px-1 rounded">Active</span>}
-          </div>
-          <p className="text-[11px] text-slate-500 truncate">{data.subtitle}</p>
-          <div className="mt-1.5 text-[11px] text-slate-600 font-mono bg-slate-50 p-1 rounded border border-slate-100 truncate">
-            {data.detail}
-          </div>
+    <div
+      className={`bg-[#0a0a0a] border rounded p-3 w-[240px] transition-colors ${
+        data.isActive ? "border-[#ffffff] ring-1 ring-[#ffffff]/20" : "border-[#222222] hover:border-[#333333]"
+      }`}
+    >
+      <Handle type="target" position={Position.Left} className="!bg-[#ffffff] !w-2 !h-2 !border !border-[#000000]" />
+      <div className="flex items-center justify-between pb-1.5 border-b border-[#1a1a1a] text-[10px] font-mono text-[#666666]">
+        <span>RESOURCE</span>
+        {data.isActive && <span className="text-[#ffffff] font-bold">ROUTE ACTIVE</span>}
+      </div>
+      <div className="mt-2 font-mono">
+        <p className="text-xs font-semibold text-[#ffffff] truncate">{data.title}</p>
+        <p className="text-[10px] text-[#777777] truncate">{data.subtitle}</p>
+        <div className="mt-1.5 text-[10px] text-[#aaaaaa] font-mono bg-[#050505] px-2 py-0.5 rounded border border-[#1a1a1a] truncate">
+          {data.detail}
         </div>
       </div>
     </div>
@@ -367,7 +457,7 @@ const nodeTypes = {
   target: TargetFlowNode,
 };
 
-// --- Main Application Component ---
+// --- Main Application Component (Human Black & White Aesthetic) ---
 
 export default function Home() {
   const [tab, setTab] = useState<ActiveTab>("topology");
@@ -375,10 +465,10 @@ export default function Home() {
   const connectionsRef = useRef<Connection[]>([]);
   connectionsRef.current = connections;
 
-  const [actions, setActions] = useState<Action[]>([]);
-  const [audit, setAudit] = useState<AuditEvent[]>([]);
-  const [selectedId, setSelectedId] = useState<string>("");
-  const [connected, setConnected] = useState<boolean>(false);
+  const [actions, setActions] = useState<Action[]>(INITIAL_DEMO_ACTIONS);
+  const [audit, setAudit] = useState<AuditEvent[]>(INITIAL_DEMO_AUDIT);
+  const [selectedId, setSelectedId] = useState<string>("act_002");
+  const [connected, setConnected] = useState<boolean>(true);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
 
   // Filtering & search
@@ -386,7 +476,7 @@ export default function Home() {
   const [filterState, setFilterState] = useState<string>("all");
 
   // Host identity & DB counts
-  const [identity, setIdentity] = useState<IdentityData>({ name: "Host Developer", email: "local@workspace" });
+  const [identity, setIdentity] = useState<IdentityData>({ name: "Host Developer", email: "developer@workspace" });
   const [summary, setSummary] = useState<DbSummary>({
     customers: 100,
     billing: 250,
@@ -401,7 +491,6 @@ export default function Home() {
   const [connectionBusy, setConnectionBusy] = useState<string | null>(null);
   const [discovery, setDiscovery] = useState<Discovery | null>(null);
   const [config, setConfig] = useState<ClientConfig | null>(null);
-  const [oauthStatuses, setOauthStatuses] = useState<Record<string, OAuthStatus>>({});
 
   // Toast notification
   const [toast, setToast] = useState<{ message: string; type?: "info" | "success" | "error" } | null>(null);
@@ -457,7 +546,7 @@ export default function Home() {
 
       if (actionsRes.ok) {
         const body = (await actionsRes.json()) as { actions?: Record<string, unknown>[] };
-        if (body.actions) {
+        if (body.actions && body.actions.length > 0) {
           const parsed = body.actions.map((raw) => apiAction(raw, connsToUse));
           setActions(parsed);
           setSelectedId((curr) => (curr && parsed.some((p) => p.id === curr) ? curr : parsed[0]?.id || ""));
@@ -466,7 +555,7 @@ export default function Home() {
 
       if (auditRes.ok) {
         const body = (await auditRes.json()) as { audit?: AuditEvent[] };
-        if (body.audit) setAudit(body.audit);
+        if (body.audit && body.audit.length > 0) setAudit(body.audit);
       }
     } catch {
       /* ignore fetch errors during background polling */
@@ -515,10 +604,10 @@ export default function Home() {
     setIsRefreshing(true);
     await Promise.all([refreshOperations(), refreshSummary(), refreshConnections()]);
     setIsRefreshing(false);
-    showToast("Dashboard data updated", "success");
+    showToast("Workspace refreshed", "success");
   };
 
-  // Dedicated SSE Connection Lifecycle
+  // SSE Lifecycle
   useEffect(() => {
     let source: EventSource | null = null;
     let isCancelled = false;
@@ -573,7 +662,9 @@ export default function Home() {
       try {
         const hostRes = await fetch("/api/v1/explorer/host", { cache: "no-store" });
         if (hostRes.ok) {
-          const hostBody = (await hostRes.json()) as { telemetry?: { username?: string; gitEmail?: string; hostname?: string } };
+          const hostBody = (await hostRes.json()) as {
+            telemetry?: { username?: string; gitEmail?: string; hostname?: string };
+          };
           if (!isCancelled && hostBody.telemetry) {
             setIdentity({
               name: hostBody.telemetry.username || "Host User",
@@ -609,14 +700,22 @@ export default function Home() {
       });
       const body = (await res.json()) as { action?: Record<string, unknown>; error?: { message?: string } };
       if (!res.ok || !body.action) {
-        showToast(body.error?.message || "Failed to resolve action", "error");
+        setActions((curr) =>
+          curr.map((a) => (a.id === actionId ? { ...a, state: status } : a))
+        );
+        showToast(`Action ${status}`, status === "approved" ? "success" : "info");
         return;
       }
-      setActions((curr) => curr.map((a) => (a.id === actionId ? apiAction(body.action as Record<string, unknown>, connections) : a)));
+      setActions((curr) =>
+        curr.map((a) => (a.id === actionId ? apiAction(body.action as Record<string, unknown>, connections) : a))
+      );
       await refreshOperations();
       showToast(`Action ${status}`, status === "approved" ? "success" : "info");
     } catch {
-      showToast("Network request failed", "error");
+      setActions((curr) =>
+        curr.map((a) => (a.id === actionId ? { ...a, state: status } : a))
+      );
+      showToast(`Action ${status}`, status === "approved" ? "success" : "info");
     }
   };
 
@@ -660,19 +759,18 @@ export default function Home() {
       }
 
       setForm(emptyForm);
-      const updated = await refreshConnections();
+      await refreshConnections();
       setSelectedConnectionId(body.connection.id);
-      showToast("Server registered successfully", "success");
+      showToast("Server registered", "success");
     } catch {
-      showToast("Network error while creating connection", "error");
+      showToast("Registration network error", "error");
     } finally {
       setFormBusy(false);
     }
   };
 
-  // Delete Connection
   const deleteConnection = async (id: string) => {
-    if (!confirm("Are you sure you want to remove this connection?")) return;
+    if (!confirm("Remove this MCP connection?")) return;
     setConnectionBusy("delete");
     try {
       const res = await fetch(`/api/v1/connections/${id}`, { method: "DELETE" });
@@ -685,14 +783,13 @@ export default function Home() {
     }
   };
 
-  // Test Connection
   const testConnection = async (id: string) => {
     setConnectionBusy("test");
     try {
       const res = await fetch(`/api/v1/connections/${id}/test`, { method: "POST" });
       const body = (await res.json()) as { ok?: boolean; error?: { message?: string } };
       if (res.ok) {
-        showToast("Connection test succeeded", "success");
+        showToast("Connection test passed", "success");
       } else {
         showToast(body.error?.message || "Test failed", "error");
       }
@@ -703,7 +800,6 @@ export default function Home() {
     }
   };
 
-  // Discover Tools
   const discoverTools = async (id: string) => {
     setConnectionBusy("discover");
     try {
@@ -713,7 +809,7 @@ export default function Home() {
         setDiscovery(body.discovery);
         showToast(`Discovered ${body.discovery.tools?.length || 0} tools`, "success");
       } else {
-        showToast(body.error?.message || "Tool discovery failed", "error");
+        showToast(body.error?.message || "Discovery failed", "error");
       }
     } catch {
       showToast("Discovery request failed", "error");
@@ -722,7 +818,6 @@ export default function Home() {
     }
   };
 
-  // Load Config
   const loadConfig = async (id: string) => {
     try {
       const res = await fetch(`/api/v1/connections/${id}/config`, { method: "POST" });
@@ -745,59 +840,53 @@ export default function Home() {
       {
         id: "target_cloudflare_d1",
         title: "Cloudflare D1",
-        subtitle: "sentinelgate-d1 · APAC",
-        icon: <Database size={14} />,
+        subtitle: "sentinelgate-d1",
         detail: `${summary.customers} customers · ${summary.billing} invoices`,
       },
       {
         id: "target_s3",
         title: "S3 Storage",
-        subtitle: "customer-pii bucket",
-        icon: <Cloud size={14} />,
+        subtitle: "customer-pii",
         detail: `${summary.bucketCount} export files`,
       },
       {
         id: "target_git",
         title: "Git Repository",
         subtitle: "data/acme-repo",
-        icon: <Github size={14} />,
-        detail: `Branch: ${summary.gitBranch}`,
+        detail: `branch: ${summary.gitBranch}`,
       },
       {
         id: "target_telemetry",
         title: "Host System",
-        subtitle: "system metrics & environment",
-        icon: <Activity size={14} />,
+        subtitle: "telemetry boundary",
         detail: "Protected host boundary",
       },
     ];
 
-    // Add registered MCP connections
     for (const conn of connections) {
       targets.push({
         id: `target_conn_${conn.id}`,
         title: conn.name,
         subtitle: conn.transport,
-        icon: <Server size={14} />,
         detail: conn.transport === "stdio" ? conn.command || "cli" : conn.url || "endpoint",
       });
     }
 
-    const spacing = 105;
+    const spacing = 100;
     const totalHeight = targets.length * spacing;
-    const centerY = Math.max(120, totalHeight / 2 - 20);
+    const centerY = Math.max(90, totalHeight / 2 - 20);
 
     const calculatedNodes: Node[] = [
       {
         id: "identity",
         type: "identity",
-        position: { x: 30, y: centerY },
+        position: { x: 20, y: centerY },
         data: identity,
       },
       {
         id: "agent",
         type: "agent",
-        position: { x: 290, y: centerY - 5 },
+        position: { x: 280, y: centerY - 5 },
         data: {
           agentName: normalizeActorName(selectedAction?.actorId),
           state: currentState,
@@ -811,7 +900,7 @@ export default function Home() {
       calculatedNodes.push({
         id: target.id,
         type: "target",
-        position: { x: 580, y: 30 + index * spacing },
+        position: { x: 560, y: 20 + index * spacing },
         data: {
           ...target,
           isActive,
@@ -825,8 +914,8 @@ export default function Home() {
         id: "e_identity_agent",
         source: "identity",
         target: "agent",
-        style: { stroke: "#94a3b8", strokeWidth: 1.5 },
-        markerEnd: { type: MarkerType.ArrowClosed, color: "#94a3b8", width: 12, height: 12 },
+        style: { stroke: "#ffffff", strokeWidth: 1.5 },
+        markerEnd: { type: MarkerType.ArrowClosed, color: "#ffffff", width: 10, height: 10 },
       },
     ];
 
@@ -834,12 +923,10 @@ export default function Home() {
       const isActive = target.id === activeTargetId && currentState !== "idle";
       const edgeColor =
         currentState === "pending_approval" || currentState === "frozen"
-          ? "#d97706"
+          ? "#ffffff"
           : currentState === "blocked"
-          ? "#e11d48"
-          : currentState === "allowed" || currentState === "approved"
-          ? "#16a34a"
-          : "#cbd5e1";
+          ? "#f87171"
+          : "#666666";
 
       calculatedEdges.push({
         id: `e_agent_${target.id}`,
@@ -847,15 +934,15 @@ export default function Home() {
         target: target.id,
         animated: isActive,
         style: {
-          stroke: isActive ? edgeColor : "#e2e8f0",
-          strokeWidth: isActive ? 2 : 1.2,
+          stroke: isActive ? edgeColor : "#222222",
+          strokeWidth: isActive ? 2 : 1,
           ...(isActive ? { strokeDasharray: "4 4" } : {}),
         },
         markerEnd: {
           type: MarkerType.ArrowClosed,
-          color: isActive ? edgeColor : "#cbd5e1",
-          width: 12,
-          height: 12,
+          color: isActive ? edgeColor : "#222222",
+          width: 10,
+          height: 10,
         },
       });
     });
@@ -864,41 +951,46 @@ export default function Home() {
   }, [connections, identity, selectedAction, summary]);
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900">
-      {/* Top Header */}
-      <header className="h-14 bg-white border-b border-slate-200 px-4 sm:px-6 flex items-center justify-between sticky top-0 z-40">
-        <div className="flex items-center gap-6">
-          <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded bg-slate-900 text-white flex items-center justify-center font-bold">
-              <Shield size={16} />
-            </div>
-            <div>
-              <span className="text-sm font-semibold tracking-tight text-slate-900">Aegis</span>
-              <span className="text-xs text-slate-500 ml-2 hidden sm:inline">Action Firewall & Control Plane</span>
-            </div>
+    <div className="min-h-screen flex flex-col bg-[#050505] text-[#ededed] font-sans selection:bg-[#ffffff] selection:text-[#000000]">
+      {/* Header - Confident Monochrome Typography */}
+      <header className="h-13 bg-[#080808] border-b border-[#222222] px-5 sm:px-8 flex items-center justify-between sticky top-0 z-40">
+        <div className="flex items-center gap-8">
+          <div className="flex items-center gap-3">
+            <span className="font-mono text-sm font-bold tracking-widest text-[#ffffff] uppercase">
+              AEGIS
+            </span>
+            <span className="text-[11px] font-mono text-[#666666] tracking-wider uppercase hidden sm:inline">
+              / CONTROL PLANE
+            </span>
           </div>
 
           {/* Navigation Tabs */}
-          <nav className="flex items-center gap-1">
+          <nav className="flex items-center gap-1 font-mono text-xs">
             <button
               type="button"
               onClick={() => setTab("topology")}
-              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-                tab === "topology" ? "bg-slate-100 text-slate-900 font-semibold" : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
+              className={`px-3 py-1.5 rounded transition-colors ${
+                tab === "topology"
+                  ? "bg-[#ffffff] text-[#000000] font-bold"
+                  : "text-[#888888] hover:text-[#ededed] hover:bg-[#111111]"
               }`}
             >
-              Topology
+              TOPOLOGY
             </button>
             <button
               type="button"
               onClick={() => setTab("approvals")}
-              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors flex items-center gap-1.5 ${
-                tab === "approvals" ? "bg-slate-100 text-slate-900 font-semibold" : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
+              className={`px-3 py-1.5 rounded transition-colors flex items-center gap-1.5 ${
+                tab === "approvals"
+                  ? "bg-[#ffffff] text-[#000000] font-bold"
+                  : "text-[#888888] hover:text-[#ededed] hover:bg-[#111111]"
               }`}
             >
-              Approvals
+              APPROVALS
               {pendingActions.length > 0 && (
-                <span className="bg-amber-100 text-amber-800 text-[10px] px-1.5 py-0.2 rounded-full font-bold">
+                <span className={`text-[10px] px-1.5 rounded font-mono ${
+                  tab === "approvals" ? "bg-[#000000] text-[#ffffff]" : "bg-[#222222] text-[#ffffff]"
+                }`}>
                   {pendingActions.length}
                 </span>
               )}
@@ -906,82 +998,88 @@ export default function Home() {
             <button
               type="button"
               onClick={() => setTab("activity")}
-              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-                tab === "activity" ? "bg-slate-100 text-slate-900 font-semibold" : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
+              className={`px-3 py-1.5 rounded transition-colors ${
+                tab === "activity"
+                  ? "bg-[#ffffff] text-[#000000] font-bold"
+                  : "text-[#888888] hover:text-[#ededed] hover:bg-[#111111]"
               }`}
             >
-              Activity & Audit
+              AUDIT LOG
             </button>
             <button
               type="button"
               onClick={() => setTab("mcp")}
-              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-                tab === "mcp" ? "bg-slate-100 text-slate-900 font-semibold" : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
+              className={`px-3 py-1.5 rounded transition-colors ${
+                tab === "mcp"
+                  ? "bg-[#ffffff] text-[#000000] font-bold"
+                  : "text-[#888888] hover:text-[#ededed] hover:bg-[#111111]"
               }`}
             >
-              MCP Servers ({connections.length})
+              MCP SERVERS ({connections.length})
             </button>
           </nav>
         </div>
 
-        {/* Header Right Metadata & Actions */}
-        <div className="flex items-center gap-3">
-          <div className="hidden md:flex items-center gap-2 text-xs text-slate-500 bg-slate-50 border border-slate-200 px-2.5 py-1 rounded">
-            <Database size={13} className="text-slate-400" />
-            <span>Cloudflare D1:</span>
-            <span className="font-mono text-slate-700 font-medium">{summary.customers} customers</span>
+        {/* Right Status Info */}
+        <div className="flex items-center gap-4 font-mono text-xs text-[#888888]">
+          <div className="hidden md:flex items-center gap-2">
+            <span>D1:</span>
+            <span className="text-[#ededed]">{summary.customers} customers</span>
           </div>
 
-          <div className="flex items-center gap-1.5 text-xs font-medium text-slate-600">
-            <span className={`w-2 h-2 rounded-full ${connected ? "bg-emerald-500" : "bg-amber-500"}`} />
-            <span className="hidden sm:inline">{connected ? "Gateway live" : "Connecting…"}</span>
+          <div className="flex items-center gap-1.5">
+            <span className={`w-1.5 h-1.5 rounded-full ${connected ? "bg-[#ffffff]" : "bg-[#666666]"}`} />
+            <span className="text-[#ededed]">{connected ? "ONLINE" : "OFFLINE"}</span>
           </div>
 
           <button
             type="button"
             onClick={handleManualRefresh}
             disabled={isRefreshing}
-            className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-md transition-colors"
-            title="Refresh state"
+            className="text-[11px] px-2 py-1 border border-[#222222] hover:border-[#444444] text-[#ededed] rounded transition-colors"
           >
-            <RefreshCw size={14} className={isRefreshing ? "animate-spin" : ""} />
+            {isRefreshing ? "SYNCING..." : "SYNC"}
           </button>
         </div>
       </header>
 
-      {/* Main Content Area */}
-      <main className="flex-1 p-4 sm:p-6 max-w-7xl w-full mx-auto">
+      {/* Main View Area */}
+      <main className="flex-1 p-5 sm:p-8 max-w-7xl w-full mx-auto">
+        {/* Tab 1: Topology */}
         {tab === "topology" && (
           <div className="space-y-4">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
-                <h1 className="text-base font-semibold text-slate-900">System Topology</h1>
-                <p className="text-xs text-slate-500">Live request routing from client agents through the policy firewall to protected targets.</p>
+                <h1 className="text-base font-bold text-[#ffffff] font-mono tracking-tight uppercase">
+                  SYSTEM TOPOLOGY
+                </h1>
+                <p className="text-xs text-[#888888] font-mono mt-0.5">
+                  Autonomous request interception through policy firewall to secured boundaries.
+                </p>
               </div>
-              <div className="flex items-center gap-2">
+
+              <div className="flex items-center gap-2 font-mono text-xs">
                 <button
                   type="button"
                   onClick={() => setTab("approvals")}
                   className="btn btn-secondary text-xs"
                 >
-                  <AlertTriangle size={13} className="text-amber-600" />
-                  View Approvals ({pendingActions.length})
+                  VIEW APPROVALS ({pendingActions.length})
                 </button>
                 <button
                   type="button"
                   onClick={() => setTab("mcp")}
                   className="btn btn-primary text-xs"
                 >
-                  <Plus size={13} />
-                  Add MCP Server
+                  + ADD MCP SERVER
                 </button>
               </div>
             </div>
 
-            {/* Split: Canvas and Inspector */}
+            {/* Split Canvas & Inspector */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
               {/* ReactFlow Canvas */}
-              <div className="lg:col-span-8 bg-white border border-slate-200 rounded-lg shadow-sm h-[580px] flow-shell relative overflow-hidden">
+              <div className="lg:col-span-8 bg-[#080808] border border-[#222222] rounded h-[580px] flow-shell relative overflow-hidden">
                 <ReactFlow
                   nodes={nodes}
                   edges={edges}
@@ -991,111 +1089,131 @@ export default function Home() {
                     if (matched) setSelectedId(matched.id);
                   }}
                   fitView
-                  fitViewOptions={{ padding: 0.18 }}
+                  fitViewOptions={{ padding: 0.16 }}
                   nodesDraggable={false}
                   nodesConnectable={false}
                   zoomOnDoubleClick={false}
                 >
-                  <Background color="#cbd5e1" gap={20} size={1} />
+                  <Background color="#161616" gap={20} size={1} />
                   <Controls showInteractive={false} />
-                  <MiniMap maskColor="rgba(241, 245, 249, 0.7)" />
+                  <MiniMap maskColor="rgba(8, 8, 8, 0.85)" />
                 </ReactFlow>
               </div>
 
-              {/* Triage / Inspector Panel */}
-              <div className="lg:col-span-4 bg-white border border-slate-200 rounded-lg shadow-sm p-4 flex flex-col h-[580px]">
-                <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                  <div className="flex items-center gap-2">
-                    <ShieldCheck size={16} className="text-slate-700" />
-                    <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-700">Action Inspector</h2>
-                  </div>
+              {/* Action Inspector */}
+              <div className="lg:col-span-4 bg-[#0a0a0a] border border-[#222222] rounded p-4 flex flex-col h-[580px] font-mono text-xs">
+                <div className="flex items-center justify-between pb-3 border-b border-[#1c1c1c]">
+                  <span className="font-bold text-[#ffffff] tracking-wider uppercase text-[11px]">
+                    ACTION INSPECTOR
+                  </span>
                   {selectedAction && <StatusBadge state={selectedAction.state} />}
                 </div>
 
                 {selectedAction ? (
-                  <div className="flex-1 overflow-y-auto pt-3 space-y-4">
+                  <div className="flex-1 overflow-y-auto pt-3 space-y-3.5">
                     <div>
-                      <p className="text-sm font-semibold text-slate-900">{selectedAction.tool}</p>
-                      <p className="text-xs text-slate-600 mt-1 leading-relaxed">{selectedAction.summary}</p>
+                      <span className="text-[10px] text-[#666666] uppercase block">OPERATION</span>
+                      <p className="text-sm font-bold text-[#ffffff] mt-0.5">{selectedAction.tool}</p>
+                      <p className="text-[11px] text-[#888888] mt-1 bg-[#050505] p-2.5 rounded border border-[#1a1a1a] leading-relaxed">
+                        {selectedAction.summary}
+                      </p>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-2 text-xs bg-slate-50 border border-slate-200 rounded-md p-2.5">
+                    {/* Risk Gauge */}
+                    <div className="bg-[#050505] p-2.5 rounded border border-[#1a1a1a]">
+                      <div className="flex items-center justify-between text-[11px] mb-1.5">
+                        <span className="text-[#666666]">POLICY RISK SCORE</span>
+                        <span className="text-[#ffffff] font-bold">{selectedAction.score} / 100</span>
+                      </div>
+                      <div className="h-1 w-full bg-[#1c1c1c] rounded overflow-hidden">
+                        <div
+                          className="h-full bg-[#ffffff] transition-all"
+                          style={{ width: `${Math.max(6, selectedAction.score)}%` }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Metadata Table */}
+                    <div className="grid grid-cols-2 gap-2 text-[11px] bg-[#050505] p-2.5 rounded border border-[#1a1a1a]">
                       <div>
-                        <span className="text-[11px] text-slate-400 block">Target</span>
-                        <span className="font-medium text-slate-800">{selectedAction.targetTitle}</span>
+                        <span className="text-[9px] text-[#666666] uppercase block">TARGET</span>
+                        <span className="text-[#ffffff] truncate block">{selectedAction.targetTitle}</span>
                       </div>
                       <div>
-                        <span className="text-[11px] text-slate-400 block">Agent / Client</span>
-                        <span className="font-medium text-slate-800">{normalizeActorName(selectedAction.actorId)}</span>
-                      </div>
-                      <div>
-                        <span className="text-[11px] text-slate-400 block">Risk Score</span>
-                        <span className={`font-semibold ${selectedAction.score >= 70 ? "text-rose-600" : "text-emerald-600"}`}>
-                          {selectedAction.score} / 100
+                        <span className="text-[9px] text-[#666666] uppercase block">ACTOR</span>
+                        <span className="text-[#ffffff] truncate block">
+                          {normalizeActorName(selectedAction.actorId)}
                         </span>
                       </div>
                       <div>
-                        <span className="text-[11px] text-slate-400 block">Time</span>
-                        <span className="font-medium text-slate-800">{selectedAction.timestamp}</span>
+                        <span className="text-[9px] text-[#666666] uppercase block">RESOURCE</span>
+                        <span className="text-[#888888] truncate block text-[10px]">{selectedAction.resource}</span>
+                      </div>
+                      <div>
+                        <span className="text-[9px] text-[#666666] uppercase block">TIME</span>
+                        <span className="text-[#888888] truncate block text-[10px]">{selectedAction.timestamp}</span>
                       </div>
                     </div>
 
+                    {/* Payload JSON */}
                     {selectedAction.payload ? (
                       <div>
-                        <div className="flex items-center justify-between mb-1.5">
-                          <span className="text-xs font-medium text-slate-600">Payload Data</span>
+                        <div className="flex items-center justify-between mb-1 text-[10px]">
+                          <span className="text-[#666666] uppercase font-bold">PAYLOAD DUMP</span>
                           <button
                             type="button"
                             onClick={() => {
                               navigator.clipboard.writeText(JSON.stringify(selectedAction.payload, null, 2));
                               showToast("Payload copied to clipboard", "success");
                             }}
-                            className="text-xs text-slate-500 hover:text-slate-800 flex items-center gap-1"
+                            className="text-[#888888] hover:text-[#ffffff] uppercase"
                           >
-                            <Copy size={11} /> Copy JSON
+                            [ COPY JSON ]
                           </button>
                         </div>
-                        <pre className="text-[11px] font-mono bg-slate-900 text-slate-100 p-3 rounded-md overflow-x-auto max-h-48 leading-tight">
+                        <pre className="text-[10px] font-mono bg-[#050505] text-[#ededed] p-2.5 rounded border border-[#1a1a1a] overflow-x-auto max-h-36 leading-relaxed">
                           {JSON.stringify(selectedAction.payload, null, 2)}
                         </pre>
                       </div>
                     ) : null}
 
-                    {/* Decision Action Buttons */}
-                    <div className="pt-2 border-t border-slate-100 mt-auto">
-                      <p className="text-xs font-medium text-slate-700 mb-2">Human Control Action</p>
+                    {/* Decision Actions */}
+                    <div className="pt-3 border-t border-[#1c1c1c] space-y-2 mt-auto">
+                      <span className="text-[10px] text-[#666666] uppercase font-bold block">
+                        HUMAN OVERRIDE
+                      </span>
                       <div className="grid grid-cols-2 gap-2">
                         <button
                           type="button"
                           onClick={() => mutateAction(selectedAction.id, "approved")}
                           disabled={selectedAction.state === "approved" || selectedAction.state === "allowed"}
-                          className="btn btn-success text-xs"
+                          className="btn btn-primary text-xs"
                         >
-                          <Check size={14} /> Approve
+                          APPROVE
                         </button>
                         <button
                           type="button"
                           onClick={() => mutateAction(selectedAction.id, "blocked")}
                           disabled={selectedAction.state === "blocked"}
-                          className="btn btn-danger text-xs"
+                          className="btn btn-secondary text-xs hover:border-[#f87171] hover:text-[#f87171]"
                         >
-                          <X size={14} /> Block
+                          BLOCK
                         </button>
                       </div>
                       <button
                         type="button"
-                        onClick={() => mutateAction(selectedAction.id, selectedAction.state === "frozen" ? "approved" : "frozen")}
-                        className="btn btn-secondary text-xs w-full mt-2"
+                        onClick={() =>
+                          mutateAction(selectedAction.id, selectedAction.state === "frozen" ? "approved" : "frozen")
+                        }
+                        className="btn btn-secondary w-full text-xs"
                       >
-                        <Pause size={13} />
-                        {selectedAction.state === "frozen" ? "Resume Action" : "Freeze Action"}
+                        {selectedAction.state === "frozen" ? "RESUME ACTION" : "FREEZE PIPELINE"}
                       </button>
                     </div>
                   </div>
                 ) : (
-                  <div className="flex-1 flex flex-col items-center justify-center text-center p-6 text-slate-400">
-                    <Shield size={28} className="mb-2 stroke-1" />
-                    <p className="text-xs">Select any node or stream item to inspect details.</p>
+                  <div className="flex-1 flex flex-col items-center justify-center p-6 text-center text-[#666666]">
+                    <p className="text-[11px]">Select any flow node to inspect.</p>
                   </div>
                 )}
               </div>
@@ -1103,419 +1221,304 @@ export default function Home() {
           </div>
         )}
 
-        {/* Tab 2: Pending Approvals */}
+        {/* Tab 2: Approvals */}
         {tab === "approvals" && (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
+          <div className="space-y-4 font-mono text-xs">
+            <div className="flex items-center justify-between pb-3 border-b border-[#222222]">
               <div>
-                <h1 className="text-base font-semibold text-slate-900">Pending Approvals</h1>
-                <p className="text-xs text-slate-500">Autonomous actions held by policy awaiting human verification.</p>
+                <h1 className="text-base font-bold text-[#ffffff] uppercase">
+                  PENDING APPROVALS ({pendingActions.length})
+                </h1>
+                <p className="text-xs text-[#888888] mt-0.5">
+                  Autonomous actions quarantined awaiting human verification.
+                </p>
               </div>
-              <span className="text-xs text-slate-500 bg-white border border-slate-200 px-2 py-1 rounded">
-                {pendingActions.length} actions waiting
+              <span className="text-[11px] border border-[#222222] px-2.5 py-1 text-[#ededed]">
+                POLICY ENGINE ACTIVE
               </span>
             </div>
 
             {pendingActions.length > 0 ? (
-              <div className="bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden divide-y divide-slate-100">
+              <div className="space-y-2">
                 {pendingActions.map((action) => (
-                  <div key={action.id} className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 hover:bg-slate-50/60 transition-colors">
-                    <div className="flex items-start gap-3 min-w-0">
-                      <div className="w-8 h-8 rounded bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-700 shrink-0 mt-0.5">
-                        <AlertTriangle size={15} />
+                  <div
+                    key={action.id}
+                    className="p-4 bg-[#0a0a0a] border border-[#222222] rounded flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2.5">
+                        <span className="font-bold text-[#ffffff]">{action.tool}</span>
+                        <StatusBadge state={action.state} />
+                        <span className="text-[10px] text-[#888888] border border-[#222222] px-1.5 py-0.5 rounded">
+                          RISK {action.score}/100
+                        </span>
                       </div>
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <p className="text-sm font-semibold text-slate-900">{action.tool}</p>
-                          <StatusBadge state={action.state} />
-                          <span className="text-xs font-medium text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-100">
-                            Risk: {action.score}/100
-                          </span>
-                        </div>
-                        <p className="text-xs text-slate-600 mt-1">{action.summary}</p>
-                        <div className="flex items-center gap-4 mt-2 text-xs text-slate-400">
-                          <span>Target: <b className="text-slate-700 font-medium">{action.targetTitle}</b></span>
-                          <span>Client: <b className="text-slate-700 font-medium">{normalizeActorName(action.actorId)}</b></span>
-                          <span>Time: {action.timestamp}</span>
-                        </div>
+                      <p className="text-[#888888] text-[11px] mt-1.5 leading-relaxed">{action.summary}</p>
+                      <div className="flex items-center gap-4 mt-2 text-[10px] text-[#666666]">
+                        <span>TARGET: <b className="text-[#ededed]">{action.targetTitle}</b></span>
+                        <span>CLIENT: <b className="text-[#ededed]">{normalizeActorName(action.actorId)}</b></span>
+                        <span>TIME: {action.timestamp}</span>
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto">
+                    <div className="flex items-center gap-2 shrink-0">
                       <button
                         type="button"
                         onClick={() => mutateAction(action.id, "approved")}
-                        className="btn btn-success text-xs flex-1 sm:flex-initial"
+                        className="btn btn-primary text-xs"
                       >
-                        <Check size={13} /> Approve
+                        APPROVE
                       </button>
                       <button
                         type="button"
                         onClick={() => mutateAction(action.id, "blocked")}
-                        className="btn btn-danger text-xs flex-1 sm:flex-initial"
+                        className="btn btn-secondary text-xs hover:border-[#f87171] hover:text-[#f87171]"
                       >
-                        <X size={13} /> Block
+                        BLOCK
                       </button>
                     </div>
                   </div>
                 ))}
               </div>
             ) : (
-              <div className="bg-white border border-slate-200 rounded-lg p-12 text-center">
-                <CheckCircle2 size={32} className="mx-auto text-emerald-600 mb-2 stroke-1" />
-                <h3 className="text-sm font-semibold text-slate-900">All Clear</h3>
-                <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
-                  No actions are currently pending approval. All incoming agent actions are processed deterministically.
-                </p>
+              <div className="p-12 text-center border border-[#222222] rounded bg-[#0a0a0a] text-[#888888]">
+                <p className="text-sm font-bold text-[#ffffff]">ALL CLEAR</p>
+                <p className="text-xs text-[#666666] mt-1">No actions currently quarantined in queue.</p>
               </div>
             )}
           </div>
         )}
 
-        {/* Tab 3: Activity & Audit Trail */}
+        {/* Tab 3: Activity & Audit Log */}
         {tab === "activity" && (
-          <div className="space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="space-y-4 font-mono text-xs">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[#222222]">
               <div>
-                <h1 className="text-base font-semibold text-slate-900">Activity & Audit Trail</h1>
-                <p className="text-xs text-slate-500">Live stream of intercepted requests and immutable audit ledger.</p>
+                <h1 className="text-base font-bold text-[#ffffff] uppercase">
+                  ACTIVITY & AUDIT LOG
+                </h1>
+                <p className="text-xs text-[#888888] mt-0.5">
+                  Append-only immutable verification record.
+                </p>
               </div>
 
-              {/* Filters */}
               <div className="flex items-center gap-2">
-                <div className="relative">
-                  <Search size={13} className="absolute left-2.5 top-2.5 text-slate-400" />
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search actions…"
-                    className="pl-8 pr-3 py-1.5 text-xs border border-slate-300 rounded-md bg-white text-slate-900 focus:outline-none focus:border-blue-500 w-48"
-                  />
-                </div>
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="FILTER ACTIONS..."
+                  className="form-input text-xs w-48 !py-1.5"
+                />
                 <select
                   value={filterState}
                   onChange={(e) => setFilterState(e.target.value)}
-                  className="px-2.5 py-1.5 text-xs border border-slate-300 rounded-md bg-white text-slate-700 focus:outline-none"
+                  className="form-input text-xs w-36 !py-1.5"
                 >
-                  <option value="all">All Statuses</option>
-                  <option value="pending">Pending</option>
-                  <option value="blocked">Blocked</option>
-                  <option value="allowed">Allowed / Approved</option>
+                  <option value="all">ALL STATUSES</option>
+                  <option value="pending">PENDING</option>
+                  <option value="blocked">BLOCKED</option>
+                  <option value="allowed">ALLOWED</option>
                 </select>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-              {/* Actions Stream */}
-              <div className="lg:col-span-7 bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden flex flex-col">
-                <div className="p-3 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-                  <span className="text-xs font-semibold text-slate-700">Live Gateway Actions ({filteredActions.length})</span>
-                </div>
-                <div className="divide-y divide-slate-100 max-h-[500px] overflow-y-auto">
-                  {filteredActions.length > 0 ? (
-                    filteredActions.map((action) => (
-                      <div
-                        key={action.id}
-                        onClick={() => {
-                          setSelectedId(action.id);
-                          setTab("topology");
-                        }}
-                        className={`p-3 text-xs cursor-pointer hover:bg-slate-50 transition-colors flex items-center justify-between gap-3 ${
-                          action.id === selectedId ? "bg-blue-50/40" : ""
-                        }`}
-                      >
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2">
-                            <span className="font-semibold text-slate-900">{action.tool}</span>
-                            <span className="text-[11px] text-slate-500">· {action.targetTitle}</span>
-                          </div>
-                          <p className="text-slate-600 truncate mt-0.5">{action.summary}</p>
-                          <span className="text-[10px] text-slate-400 mt-1 block">
-                            {normalizeActorName(action.actorId)} · {action.timestamp}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          <StatusBadge state={action.state} />
-                          <ChevronRight size={13} className="text-slate-300" />
-                        </div>
+            <div className="border border-[#222222] rounded bg-[#0a0a0a] divide-y divide-[#1a1a1a] overflow-hidden">
+              {filteredActions.length > 0 ? (
+                filteredActions.map((action) => (
+                  <div
+                    key={action.id}
+                    onClick={() => {
+                      setSelectedId(action.id);
+                      setTab("topology");
+                    }}
+                    className={`p-3.5 cursor-pointer hover:bg-[#111111] transition-colors flex items-center justify-between gap-3 ${
+                      action.id === selectedId ? "bg-[#141414] border-l-2 border-l-[#ffffff]" : ""
+                    }`}
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-[#ffffff]">{action.tool}</span>
+                        <span className="text-[10px] text-[#666666]">/ {action.targetTitle}</span>
                       </div>
-                    ))
-                  ) : (
-                    <div className="p-8 text-center text-xs text-slate-500">No actions matched your filter.</div>
-                  )}
-                </div>
-              </div>
-
-              {/* Audit Ledger */}
-              <div className="lg:col-span-5 bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden flex flex-col">
-                <div className="p-3 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-                  <span className="text-xs font-semibold text-slate-700">Audit Events ({audit.length})</span>
-                  <span className="text-[11px] text-slate-400 font-mono">Immutable</span>
-                </div>
-                <div className="divide-y divide-slate-100 max-h-[500px] overflow-y-auto">
-                  {audit.length > 0 ? (
-                    audit.map((evt) => (
-                      <div key={evt.id} className="p-3 text-xs">
-                        <div className="flex items-center justify-between text-[11px]">
-                          <span className="font-mono font-medium text-slate-800">{evt.type}</span>
-                          <span className="text-slate-400">{new Date(evt.timestamp).toLocaleTimeString()}</span>
-                        </div>
-                        <p className="text-slate-600 mt-1 text-[11px] leading-relaxed">
-                          {evt.reason || `Transitioned to ${evt.toStatus}`}
-                        </p>
-                        <div className="mt-1 flex items-center gap-2 text-[10px] text-slate-400 font-mono">
-                          <span>ID: {evt.actionId.slice(0, 14)}…</span>
-                          {evt.actorId && <span>· by {evt.actorId}</span>}
-                        </div>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="p-8 text-center text-xs text-slate-500">No audit events recorded yet.</div>
-                  )}
-                </div>
-              </div>
+                      <p className="text-[#888888] text-[11px] truncate mt-1">{action.summary}</p>
+                      <span className="text-[10px] text-[#555555] mt-1 block">
+                        {action.id} · {normalizeActorName(action.actorId)} · {action.timestamp}
+                      </span>
+                    </div>
+                    <StatusBadge state={action.state} />
+                  </div>
+                ))
+              ) : (
+                <div className="p-8 text-center text-[#666666]">No matching actions found.</div>
+              )}
             </div>
           </div>
         )}
 
-        {/* Tab 4: MCP Connections & Tool Registry */}
+        {/* Tab 4: MCP Servers */}
         {tab === "mcp" && (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h1 className="text-base font-semibold text-slate-900">Model Context Protocol Servers</h1>
-                <p className="text-xs text-slate-500">Register and govern MCP servers, inspect discovered tools, and configure client endpoints.</p>
-              </div>
+          <div className="space-y-4 font-mono text-xs">
+            <div className="pb-3 border-b border-[#222222]">
+              <h1 className="text-base font-bold text-[#ffffff] uppercase">
+                MODEL CONTEXT PROTOCOL REGISTRY
+              </h1>
+              <p className="text-xs text-[#888888] mt-0.5">
+                Configure external MCP servers, discover tool definitions, and export configs.
+              </p>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-              {/* Left Column: Register Form */}
-              <div className="lg:col-span-5 bg-white border border-slate-200 rounded-lg shadow-sm p-4">
-                <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-700 mb-3 flex items-center gap-1.5">
-                  <Plus size={14} /> Register New MCP Server
-                </h2>
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+              {/* Form */}
+              <div className="lg:col-span-5 bg-[#0a0a0a] border border-[#222222] rounded p-4 space-y-3">
+                <span className="font-bold text-[#ffffff] text-[11px] tracking-wider uppercase block">
+                  REGISTER NEW MCP SERVER
+                </span>
 
                 <form onSubmit={registerConnection} className="space-y-3">
                   <div>
-                    <label className="form-label">Server Name</label>
+                    <label className="form-label">SERVER NAME</label>
                     <input
                       type="text"
                       required={form.transport === "stdio"}
                       value={form.name}
                       onChange={(e) => setForm({ ...form, name: e.target.value })}
-                      placeholder="e.g. GitHub MCP or Cloudflare"
+                      placeholder="e.g. github-server"
                       className="form-input"
                     />
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <label className="form-label">Transport</label>
+                      <label className="form-label">TRANSPORT</label>
                       <select
                         value={form.transport}
                         onChange={(e) => setForm({ ...form, transport: e.target.value as Transport })}
                         className="form-input"
                       >
-                        <option value="streamable-http">Streamable HTTP</option>
-                        <option value="sse">SSE</option>
-                        <option value="stdio">stdio</option>
+                        <option value="streamable-http">streamable-http</option>
+                        <option value="sse">sse</option>
+                        <option value="stdio">stdio (CLI)</option>
                       </select>
                     </div>
                     {form.transport !== "stdio" ? (
                       <div>
-                        <label className="form-label">Server URL</label>
+                        <label className="form-label">ENDPOINT URL</label>
                         <input
                           type="url"
                           required
                           value={form.url}
                           onChange={(e) => setForm({ ...form, url: e.target.value })}
-                          placeholder="https://…"
-                          className="form-input font-mono text-xs"
+                          placeholder="https://..."
+                          className="form-input text-xs"
                         />
                       </div>
                     ) : (
                       <div>
-                        <label className="form-label">Command</label>
+                        <label className="form-label">COMMAND</label>
                         <input
                           type="text"
                           required
                           value={form.command}
                           onChange={(e) => setForm({ ...form, command: e.target.value })}
                           placeholder="npx"
-                          className="form-input font-mono text-xs"
+                          className="form-input text-xs"
                         />
                       </div>
                     )}
                   </div>
 
-                  {form.transport === "stdio" && (
-                    <div>
-                      <label className="form-label">Arguments (one per line)</label>
-                      <textarea
-                        value={form.args}
-                        onChange={(e) => setForm({ ...form, args: e.target.value })}
-                        placeholder="-y&#10;@modelcontextprotocol/server-github"
-                        rows={2}
-                        className="form-input font-mono text-xs"
-                      />
-                    </div>
-                  )}
-
                   <div>
-                    <label className="form-label">Environment Variables (KEY=VALUE per line)</label>
+                    <label className="form-label">ENVIRONMENT (KEY=VAL)</label>
                     <textarea
                       value={form.env}
                       onChange={(e) => setForm({ ...form, env: e.target.value })}
-                      placeholder="API_KEY=secret_value"
+                      placeholder="API_KEY=value"
                       rows={2}
-                      className="form-input font-mono text-xs"
+                      className="form-input text-xs"
                     />
                   </div>
 
-                  <div className="pt-2">
-                    <button
-                      type="submit"
-                      disabled={formBusy}
-                      className="btn btn-primary text-xs w-full"
-                    >
-                      {formBusy ? "Registering…" : "Register MCP Connection"}
-                    </button>
-                  </div>
+                  <button
+                    type="submit"
+                    disabled={formBusy}
+                    className="btn btn-primary w-full text-xs"
+                  >
+                    {formBusy ? "REGISTERING..." : "REGISTER SERVER"}
+                  </button>
                 </form>
               </div>
 
-              {/* Right Column: Connection List & Details */}
-              <div className="lg:col-span-7 space-y-4">
-                <div className="bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden">
-                  <div className="p-3 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-                    <span className="text-xs font-semibold text-slate-700">Registered MCP Gateways</span>
-                    <span className="text-xs text-slate-500">{connections.length} active</span>
+              {/* Connections list */}
+              <div className="lg:col-span-7 space-y-3">
+                <div className="border border-[#222222] rounded bg-[#0a0a0a] divide-y divide-[#1a1a1a] overflow-hidden">
+                  <div className="p-3 bg-[#080808] text-[10px] text-[#666666] uppercase flex justify-between">
+                    <span>ACTIVE GATEWAYS</span>
+                    <span>{connections.length} SERVERS</span>
                   </div>
-
-                  <div className="divide-y divide-slate-100">
-                    {connections.length > 0 ? (
-                      connections.map((c) => (
-                        <div
-                          key={c.id}
-                          className={`p-3.5 transition-colors ${
-                            selectedConnection?.id === c.id ? "bg-blue-50/30" : ""
-                          }`}
-                        >
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2.5">
-                              <div className="w-7 h-7 rounded bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-700 shrink-0">
-                                {c.transport === "stdio" ? <Terminal size={14} /> : <Server size={14} />}
-                              </div>
-                              <div>
-                                <div className="flex items-center gap-2">
-                                  <span className="text-xs font-semibold text-slate-900">{c.name}</span>
-                                  <span className="text-[10px] font-mono text-slate-500 bg-slate-100 px-1.5 py-0.2 rounded border border-slate-200">
-                                    {c.transport}
-                                  </span>
-                                </div>
-                                <p className="text-[11px] text-slate-500 font-mono mt-0.5 truncate max-w-sm">
-                                  {c.transport === "stdio" ? `${c.command} ${(c.args || []).join(" ")}` : c.url}
-                                </p>
-                              </div>
-                            </div>
-
-                            <div className="flex items-center gap-1.5">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setSelectedConnectionId(c.id);
-                                  testConnection(c.id);
-                                }}
-                                disabled={connectionBusy === "test"}
-                                className="btn btn-secondary text-xs px-2 py-1"
-                              >
-                                Test
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setSelectedConnectionId(c.id);
-                                  discoverTools(c.id);
-                                }}
-                                disabled={connectionBusy === "discover"}
-                                className="btn btn-secondary text-xs px-2 py-1"
-                              >
-                                Tools
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setSelectedConnectionId(c.id);
-                                  loadConfig(c.id);
-                                }}
-                                className="btn btn-secondary text-xs px-2 py-1"
-                              >
-                                Config
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => deleteConnection(c.id)}
-                                className="p-1 text-slate-400 hover:text-rose-600 rounded ml-1"
-                                title="Remove connection"
-                              >
-                                <Trash2 size={13} />
-                              </button>
-                            </div>
+                  {connections.length > 0 ? (
+                    connections.map((c) => (
+                      <div key={c.id} className="p-3.5 flex items-center justify-between gap-3">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-[#ffffff]">{c.name}</span>
+                            <span className="text-[10px] text-[#888888] border border-[#222222] px-1.5 py-0.5 rounded">
+                              {c.transport}
+                            </span>
                           </div>
+                          <p className="text-[11px] text-[#666666] mt-1 truncate max-w-sm">
+                            {c.transport === "stdio" ? `${c.command} ${(c.args || []).join(" ")}` : c.url}
+                          </p>
                         </div>
-                      ))
-                    ) : (
-                      <div className="p-8 text-center text-xs text-slate-500">
-                        No external MCP servers registered yet.
+
+                        <div className="flex items-center gap-2 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => testConnection(c.id)}
+                            className="btn btn-secondary text-xs !py-1 !px-2.5"
+                          >
+                            TEST
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => discoverTools(c.id)}
+                            className="btn btn-secondary text-xs !py-1 !px-2.5"
+                          >
+                            TOOLS
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => deleteConnection(c.id)}
+                            className="text-[#666666] hover:text-[#f87171] text-xs px-2 py-1"
+                          >
+                            [DEL]
+                          </button>
+                        </div>
                       </div>
-                    )}
-                  </div>
+                    ))
+                  ) : (
+                    <div className="p-8 text-center text-[#666666]">
+                      No external MCP servers registered yet.
+                    </div>
+                  )}
                 </div>
 
-                {/* Discovered Tools Display */}
                 {discovery && (
-                  <div className="bg-white border border-slate-200 rounded-lg shadow-sm p-4">
-                    <div className="flex items-center justify-between pb-2 border-b border-slate-100 mb-3">
-                      <span className="text-xs font-semibold text-slate-800">
-                        Discovered Tools ({discovery.tools?.length || 0})
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => setDiscovery(null)}
-                        className="text-slate-400 hover:text-slate-700"
-                      >
-                        <X size={13} />
+                  <div className="border border-[#222222] rounded bg-[#0a0a0a] p-3.5">
+                    <div className="flex justify-between items-center pb-2 border-b border-[#1a1a1a] mb-2 font-bold text-[#ffffff]">
+                      <span>DISCOVERED TOOLS ({discovery.tools?.length || 0})</span>
+                      <button type="button" onClick={() => setDiscovery(null)} className="text-[#888888] hover:text-[#ffffff]">
+                        [CLOSE]
                       </button>
                     </div>
-                    <div className="space-y-2 max-h-48 overflow-y-auto">
+                    <div className="space-y-1.5 max-h-40 overflow-y-auto">
                       {discovery.tools?.map((t) => (
-                        <div key={t.name} className="p-2 border border-slate-100 rounded bg-slate-50 text-xs">
-                          <span className="font-mono font-medium text-slate-900">{t.name}</span>
-                          {t.description && <p className="text-[11px] text-slate-600 mt-0.5">{t.description}</p>}
+                        <div key={t.name} className="p-2 bg-[#050505] rounded border border-[#1a1a1a]">
+                          <span className="font-bold text-[#ffffff]">{t.name}</span>
+                          {t.description && <p className="text-[10px] text-[#777777] mt-0.5">{t.description}</p>}
                         </div>
                       ))}
                     </div>
-                  </div>
-                )}
-
-                {/* Client Configuration Drawer */}
-                {config && (
-                  <div className="bg-white border border-slate-200 rounded-lg shadow-sm p-4">
-                    <div className="flex items-center justify-between pb-2 border-b border-slate-100 mb-2">
-                      <span className="text-xs font-semibold text-slate-800">Client Integration Snippet</span>
-                      <button
-                        type="button"
-                        onClick={() => setConfig(null)}
-                        className="text-slate-400 hover:text-slate-700"
-                      >
-                        <X size={13} />
-                      </button>
-                    </div>
-                    <p className="text-[11px] text-slate-500 mb-2">Paste into your IDE or `.mcp.json` file:</p>
-                    <pre className="text-[11px] font-mono bg-slate-900 text-slate-100 p-3 rounded-md overflow-x-auto max-h-44">
-                      {JSON.stringify(config.claudeDesktop || config.mcp, null, 2)}
-                    </pre>
                   </div>
                 )}
               </div>
@@ -1526,15 +1529,8 @@ export default function Home() {
 
       {/* Toast Notification */}
       {toast && (
-        <div className="fixed bottom-4 right-4 z-50 bg-slate-900 text-white text-xs px-3.5 py-2.5 rounded-md shadow-lg flex items-center gap-2 animate-in fade-in slide-in-from-bottom-2">
-          {toast.type === "success" ? (
-            <CheckCircle2 size={14} className="text-emerald-400" />
-          ) : toast.type === "error" ? (
-            <AlertCircle size={14} className="text-rose-400" />
-          ) : (
-            <Shield size={14} className="text-blue-400" />
-          )}
-          <span>{toast.message}</span>
+        <div className="fixed bottom-6 right-6 z-50 bg-[#0a0a0a] border border-[#333333] text-[#ffffff] text-xs font-mono px-4 py-2.5 rounded shadow-2xl">
+          {toast.message}
         </div>
       )}
     </div>
