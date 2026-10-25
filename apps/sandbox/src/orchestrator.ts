@@ -85,6 +85,7 @@ export class Orchestrator {
           mode: found.mode,
           status: found.running ? "running" : "stopped",
           interactive: found.interactive,
+          ...(found.project ? { project: found.project } : {}),
           createdAt: now,
           updatedAt: now,
         };
@@ -152,6 +153,16 @@ export class Orchestrator {
       const stat = await fs.promises.stat(source).catch(() => null);
       if (!stat?.isDirectory()) throw new Error(`workspace path is not a directory: ${source}`);
     }
+    // Bind-mounted projects only make sense against a local daemon: the
+    // path must exist on the machine running the containers.
+    if (input.project) {
+      if (process.env.DOCKER_HOST) throw new Error("Project folders require a local Docker daemon (no DOCKER_HOST).");
+      if (!input.project.name?.trim() || input.project.name.length > 120) throw new Error("project.name is required (max 120 chars).");
+      const projectPath = path.resolve(input.project.path);
+      const stat = await fs.promises.stat(projectPath).catch(() => null);
+      if (!stat?.isDirectory()) throw new Error(`project folder not found: ${projectPath}`);
+      input.project = { ...input.project, path: projectPath };
+    }
 
     const blockDomains = await this.gateway.connectionHosts();
     const blockIps: string[] = [];
@@ -174,11 +185,12 @@ export class Orchestrator {
 
     const record: SandboxRecord = {
       id,
-      name: input.name || `sandbox-${id.slice(3, 11)}`,
+      name: input.name || (input.project ? input.project.name : `sandbox-${id.slice(3, 11)}`),
       command,
       mode,
       status: "running",
       interactive,
+      ...(input.project ? { project: input.project } : {}),
       createdAt: now,
       updatedAt: now,
     };
@@ -195,9 +207,14 @@ export class Orchestrator {
         mode,
         gatewayUrl: this.gatewayUrlForAgents,
         ...(input.stdin !== undefined && !interactive ? { agentStdin: input.stdin } : {}),
-        nameLabel: input.name || `sandbox-${id.slice(3, 11)}`,
+        nameLabel: record.name,
         interactive,
         commandLabel: command.join(" ").slice(0, 300),
+        ...(input.project
+          ? { projectPath: input.project.path, readOnly: Boolean(input.project.readOnly), projectLabel: input.project.name }
+          : {}),
+        // Match the laptop user so mounted project files stay user-owned.
+        agentUid: typeof process.getuid === "function" ? process.getuid() : 1000,
       });
       const gatewayIp = await hostGatewayIp(`aegis-sb-${id}`);
       await runNetwatch({
@@ -211,6 +228,7 @@ export class Orchestrator {
         blockIps,
         gatewayIps,
         hostGatewayIp: gatewayIp,
+        agentUid: typeof process.getuid === "function" ? process.getuid() : 1000,
       });
       if (input.workspace) await copyIntoWorkspace(id, path.resolve(input.workspace));
     } catch (error) {

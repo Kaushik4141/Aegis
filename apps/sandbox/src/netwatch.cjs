@@ -44,6 +44,8 @@ const HOST_GATEWAY_IP = env.AEGIS_GATEWAY_HOSTFILE_IP || "";
 const FLUSH_MS = 400;
 const POLL_MS = 1000;
 const GATEWAY_PORTS = [3000, 8787, 8788];
+// Matches the supervisor's agent uid so owner-based rules track agent traffic.
+const AGENT_UID = String(Number(env.AEGIS_AGENT_UID) || 1000);
 
 const queue = [];
 let flushing = false;
@@ -112,14 +114,14 @@ async function setupEnforce() {
   for (const tool of ["iptables", "ip6tables"]) {
     await fw([tool, "-N", "AEGIS_BLOCK"]);
     await fw([tool, "-N", "AEGIS_ALLOW"]);
-    await fw([tool, "-I", "OUTPUT", "1", "-m", "owner", "--uid-owner", "1000", "-j", "AEGIS_BLOCK"]);
-    await fw([tool, "-I", "OUTPUT", "2", "-m", "owner", "--uid-owner", "1000", "-j", "AEGIS_ALLOW"]);
+    await fw([tool, "-I", "OUTPUT", "1", "-m", "owner", "--uid-owner", AGENT_UID, "-j", "AEGIS_BLOCK"]);
+    await fw([tool, "-I", "OUTPUT", "2", "-m", "owner", "--uid-owner", AGENT_UID, "-j", "AEGIS_ALLOW"]);
     await fw([tool, "-A", "AEGIS_ALLOW", "-o", "lo", "-j", "ACCEPT"]);
     for (const port of GATEWAY_PORTS) {
       await fw([tool, "-A", "AEGIS_ALLOW", "-d", "127.0.0.1/32", "-p", "tcp", "--dport", String(port), "-j", "ACCEPT"]);
     }
     if (ENFORCE_DEFAULT === "deny") {
-      await fw([tool, "-A", "OUTPUT", "-m", "owner", "--uid-owner", "1000", "-j", "REJECT",
+      await fw([tool, "-A", "OUTPUT", "-m", "owner", "--uid-owner", AGENT_UID, "-j", "REJECT",
         "--reject-with", tool === "ip6tables" ? "icmp6-port-unreachable" : "icmp-port-unreachable"]);
     }
   }

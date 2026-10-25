@@ -22,6 +22,15 @@ export interface SandboxEvent extends SandboxEventInput {
   sandboxId: string;
 }
 
+export interface SandboxProject {
+  /** Display name of the project. */
+  name: string;
+  /** Host folder bind-mounted at /workspace — the user's real project. */
+  path: string;
+  /** Mount the project folder read-only (agent can read, not write). */
+  readOnly?: boolean;
+}
+
 export interface SandboxRecord {
   id: string;
   name: string;
@@ -30,6 +39,7 @@ export interface SandboxRecord {
   status: SandboxStatus;
   /** Interactive sandboxes run a keepalive and are driven via exec sessions; they persist across stop/restart. */
   interactive: boolean;
+  project?: SandboxProject;
   createdAt: string;
   updatedAt: string;
   exitCode?: number;
@@ -50,4 +60,6 @@ export interface CreateSandboxInput {
   workspace?: string;
   /** Lines fed to the agent's stdin at startup (drives interactive REPL agents). */
   stdin?: string;
+  /** Open a real host folder as the project (bind-mounted, local daemon only). */
+  project?: SandboxProject;
 }

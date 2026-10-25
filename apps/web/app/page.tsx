@@ -1133,6 +1133,7 @@ type SandboxRecordUi = {
   mode: "observe" | "enforce" | string;
   status: string;
   interactive?: boolean;
+  project?: { name: string; path: string; readOnly?: boolean };
   exitCode?: number;
   report?: { filesystem?: Array<{ kind: string; path: string }>; eventCounts?: Record<string, number> };
   createdAt: string;
@@ -1292,6 +1293,12 @@ function SandboxWindowNode({ data, selected }: NodeProps) {
         <div className="flex min-w-0 items-center gap-2">
           <GripVertical size={12} className="shrink-0 text-slate-300" />
           <span className="truncate text-[11px] font-bold text-slate-800">{sandbox.name}</span>
+          {sandbox.project && (
+            <StatusPill tone="blue">
+              <Github size={10} /> {sandbox.project.name}
+              {sandbox.project.readOnly ? " · ro" : ""}
+            </StatusPill>
+          )}
           <StatusPill tone={sandbox.mode === "enforce" ? "blue" : "slate"}>{sandbox.mode}</StatusPill>
           {hasAlert && (
             <StatusPill tone="red">
@@ -1340,6 +1347,9 @@ function SandboxesView({ notify }: { notify: (message: string) => void }) {
   const [env, setEnv] = useState("");
   const [workspace, setWorkspace] = useState("");
   const [stdinText, setStdinText] = useState("");
+  const [projectPath, setProjectPath] = useState("");
+  const [projectName, setProjectName] = useState("");
+  const [projectReadOnly, setProjectReadOnly] = useState(false);
   const [busy, setBusy] = useState(false);
   const [serviceUp, setServiceUp] = useState(true);
   const [nodes, setNodes] = useState<Node[]>([]);
@@ -1504,6 +1514,79 @@ function SandboxesView({ notify }: { notify: (message: string) => void }) {
     }
   };
 
+  const openProject = async () => {
+    if (!projectPath.trim()) {
+      notify("Enter (or browse) a project folder first");
+      return;
+    }
+    setBusy(true);
+    try {
+      const response = await fetch("/sandbox-api/sandboxes", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          name: projectName.trim() || undefined,
+          command: [],
+          mode,
+          project: {
+            name: projectName.trim() || projectPath.trim().split("/").filter(Boolean).pop() || "project",
+            path: projectPath.trim(),
+            ...(projectReadOnly ? { readOnly: true } : {}),
+          },
+        }),
+      });
+      if (!response.ok) throw new Error((await response.json()).message || `HTTP ${response.status}`);
+      const body = (await response.json()) as { sandbox?: SandboxRecordUi };
+      if (body.sandbox) setSelectedId(body.sandbox.id);
+      notify(projectReadOnly ? "Project opened read-only" : "Project folder mounted — agent edits are real files");
+      await refresh();
+    } catch (error) {
+      notify(`Could not open project: ${error instanceof Error ? error.message : "unknown error"}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const browseFolder = async () => {
+    const tauri = (window as unknown as { __TAURI__?: { dialog?: { open: (options: unknown) => Promise<string | string[] | null> } } }).__TAURI__;
+    if (!tauri?.dialog) {
+      notify("Native picker available in the desktop app — type the path here for now");
+      return;
+    }
+    const chosen = await tauri.dialog.open({ directory: true, multiple: false, title: "Open folder as project" });
+    const folder = Array.isArray(chosen) ? chosen[0] : chosen;
+    if (folder) {
+      setProjectPath(folder);
+      if (!projectName.trim()) setProjectName(folder.split("/").filter(Boolean).pop() || folder);
+    }
+  };
+
+  const addProjectTerminal = async () => {
+    if (!selected?.project) return;
+    setBusy(true);
+    try {
+      const response = await fetch("/sandbox-api/sandboxes", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          name: `${selected.project.name} — terminal`,
+          command: [],
+          mode: selected.mode,
+          project: selected.project,
+        }),
+      });
+      if (!response.ok) throw new Error((await response.json()).message || `HTTP ${response.status}`);
+      const body = (await response.json()) as { sandbox?: SandboxRecordUi };
+      if (body.sandbox) setSelectedId(body.sandbox.id);
+      notify("Terminal added to project");
+      await refresh();
+    } catch (error) {
+      notify(`Failed: ${error instanceof Error ? error.message : "unknown error"}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const restartSandbox = async () => {
     if (!selected) return;
     setBusy(true);
@@ -1633,6 +1716,12 @@ function SandboxesView({ notify }: { notify: (message: string) => void }) {
                         <AlertTriangle size={10} /> {alertCount}
                       </StatusPill>
                     )}
+                    {selected.project && selected.status === "running" && (
+                      <button type="button" disabled={busy} onClick={() => void addProjectTerminal()} className="button-primary">
+                        <Plus size={12} />
+                        Terminal in this project
+                      </button>
+                    )}
                     {selected.status === "running" && (
                       <button type="button" disabled={busy} onClick={() => void stopSandbox()} className="button-danger">
                         <Pause size={12} />
@@ -1654,6 +1743,11 @@ function SandboxesView({ notify }: { notify: (message: string) => void }) {
                   </div>
                 }
               />
+              {selected.project && (
+                <p className="border-b border-slate-100 px-5 py-2 font-mono text-[9.5px] text-slate-500">
+                  {selected.project.readOnly ? "read-only" : "read-write"} · {selected.project.path}
+                </p>
+              )}
               <div className="max-h-[420px] overflow-y-auto p-3">
                 {events.map((event) => renderTimelineEvent(event))}
                 {events.length === 0 && <p className="p-4 text-center text-[10px] text-slate-500">Events appear as the agent works.</p>}
@@ -1666,6 +1760,52 @@ function SandboxesView({ notify }: { notify: (message: string) => void }) {
               </div>
             </Panel>
           ) : (
+            <div className="space-y-4">
+            <Panel>
+              <SectionHeading icon={<Github size={15} />} eyebrow="Projects" title="Open folder as project" />
+              <div className="space-y-3 p-5">
+                <label className="block">
+                  <span className="text-[9px] font-extrabold uppercase tracking-[.14em] text-slate-400">Project folder on this machine</span>
+                  <div className="mt-1 flex gap-2">
+                    <input
+                      value={projectPath}
+                      onChange={(event) => setProjectPath(event.target.value)}
+                      placeholder="/home/you/code/my-app"
+                      className="field-input font-mono"
+                    />
+                    <button type="button" onClick={() => void browseFolder()} className="button-secondary shrink-0">
+                      Browse…
+                    </button>
+                  </div>
+                </label>
+                <label className="block">
+                  <span className="text-[9px] font-extrabold uppercase tracking-[.14em] text-slate-400">Project name</span>
+                  <input
+                    value={projectName}
+                    onChange={(event) => setProjectName(event.target.value)}
+                    placeholder="my-app"
+                    className="field-input mt-1"
+                  />
+                </label>
+                <label className="flex items-center gap-2 text-[10px] font-bold text-slate-600">
+                  <input
+                    type="checkbox"
+                    checked={projectReadOnly}
+                    onChange={(event) => setProjectReadOnly(event.target.checked)}
+                    className="h-3.5 w-3.5"
+                  />
+                  Read-only (agent can read the folder, not write it)
+                </label>
+                <button type="button" disabled={busy} onClick={() => void openProject()} className="button-primary w-full justify-center">
+                  <Zap size={13} />
+                  Open project {mode === "enforce" ? "(enforced)" : "(observed)"}
+                </button>
+                <p className="text-[9.5px] leading-4 text-slate-400">
+                  The real folder is mounted into a sandboxed workspace — agent edits are real files owned by you, and every
+                  write, process, and network call is recorded. Add more terminals to the same project from the inspector.
+                </p>
+              </div>
+            </Panel>
             <Panel>
               <SectionHeading icon={<Plus size={15} />} eyebrow="Advanced launch" title="Custom agent run" />
               <div className="space-y-3 p-5">
@@ -1700,6 +1840,7 @@ function SandboxesView({ notify }: { notify: (message: string) => void }) {
                 </button>
               </div>
             </Panel>
+            </div>
           )}
 
           <Panel className="overflow-hidden">

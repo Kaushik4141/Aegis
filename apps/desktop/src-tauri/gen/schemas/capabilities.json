@@ -1,1 +1,1 @@
-{}
+{"default":{"identifier":"default","description":"Default capability for the Aegis window: core access plus the native folder picker used by 'Open folder as project'.","local":true,"windows":["main"],"permissions":["core:default","dialog:default"]}}

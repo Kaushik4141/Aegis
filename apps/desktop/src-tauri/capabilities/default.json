@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Default capability for the Aegis window: core access plus the native folder picker used by 'Open folder as project'.",
+  "windows": ["main"],
+  "permissions": ["core:default", "dialog:default"]
+}

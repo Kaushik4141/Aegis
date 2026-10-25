@@ -284,6 +284,16 @@ process), process, and file write lands in the inspector timeline, and
 direct access to registered business systems turns a window red with a
 shadow-access alert in real time.
 
+**Open folder as project (your laptop, sandboxed).** Instead of a fresh
+volume, mount one of your real folders into a monitored workspace: agent
+edits are real files owned by you (the agent runs as your uid), every write
+stays on the timeline, and the network remains fully sandboxed. Projects can
+be opened read-only, and you can add more terminals/agents to the same
+project from the inspector. The desktop app's **Browse…** button uses a
+native folder picker (tauri-plugin-dialog); in the browser, type the path.
+Project mounts require a local Docker daemon — remote daemons keep the
+isolated-volume workspaces.
+
 **One-shot runs (scripted agents and demos).**
 
 ```bash

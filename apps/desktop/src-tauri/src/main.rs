@@ -181,6 +181,7 @@ fn main() {
         libc::signal(libc::SIGHUP, handler);
     }
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .manage(Services(Mutex::new(Vec::new())))
         .invoke_handler(tauri::generate_handler![service_status])
         .build(tauri::generate_context!())

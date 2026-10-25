@@ -69,10 +69,22 @@ export interface RunAgentOptions {
   nameLabel: string;
   interactive: boolean;
   commandLabel: string;
+  /** Host folder to bind-mount at /workspace (the user's real project). */
+  projectPath?: string;
+  readOnly?: boolean;
+  projectLabel?: string;
+  /** Laptop user's uid: agents run as it so mounted files stay user-owned. */
+  agentUid: number;
 }
 
 export async function runAgent(options: RunAgentOptions): Promise<void> {
   const { agent } = imageName(options.id);
+  // Bind-mounted projects put the user's real folder at /workspace (writes
+  // are real files owned by the user); everything else uses a daemon-side
+  // named volume. Bind paths resolve on the daemon host — local only.
+  const workspace = options.projectPath
+    ? `${options.projectPath}:/workspace${options.readOnly ? ":ro" : ""}`
+    : `${workspaceVolume(options.id)}:/workspace`;
   const args = [
     "run", "-d", "--name", agent,
     "--label", `aegis.sandbox=${options.id}`,
@@ -80,16 +92,19 @@ export async function runAgent(options: RunAgentOptions): Promise<void> {
     "--label", `aegis.mode=${options.mode}`,
     "--label", `aegis.interactive=${options.interactive ? "1" : "0"}`,
     "--label", `aegis.command=${options.commandLabel}`,
+    "--label", `aegis.agentUid=${options.agentUid}`,
+    ...(options.projectPath
+      ? ["--label", `aegis.project=${options.projectLabel || ""}`, "--label", `aegis.projectPath=${options.projectPath}`, "--label", `aegis.projectRo=${options.readOnly ? "1" : "0"}`]
+      : []),
     "--add-host=host.docker.internal:host-gateway",
-    // Named volume (auto-created by the daemon) instead of a host bind mount:
-    // identical on local and remote daemons, and nothing on the service host
-    // is ever exposed to the sandbox.
-    "-v", `${workspaceVolume(options.id)}:/workspace`,
+    "-v", workspace,
     "-w", "/workspace",
     "-e", `AEGIS_SANDBOX_ID=${options.id}`,
     "-e", `AEGIS_EVENT_URL=${options.eventUrl}`,
     "-e", `AEGIS_MODE=${options.mode}`,
     "-e", `AEGIS_GATEWAY_URL=${options.gatewayUrl}`,
+    "-e", `AEGIS_AGENT_UID=${options.agentUid}`,
+    "-e", `AEGIS_AGENT_GID=${options.agentUid}`,
     // Agents inside the sandbox reach the Aegis gateway through the docker
     // host gateway; inject the standard env unless the caller set one.
     "-e", `SENTINEL_GATEWAY_URL=${options.env.SENTINEL_GATEWAY_URL || options.gatewayUrl}`,
@@ -115,6 +130,7 @@ export interface RunNetwatchOptions {
   blockIps: string[];
   gatewayIps: string[];
   hostGatewayIp?: string;
+  agentUid: number;
 }
 
 export async function runNetwatch(options: RunNetwatchOptions): Promise<void> {
@@ -132,6 +148,7 @@ export async function runNetwatch(options: RunNetwatchOptions): Promise<void> {
     "-e", `AEGIS_EVENT_URL=${options.eventUrl}`,
     "-e", `AEGIS_UPSTREAM_DNS=${options.upstreamDns}`,
     "-e", `AEGIS_MODE=${options.mode}`,
+    "-e", `AEGIS_AGENT_UID=${options.agentUid}`,
     "-e", `AEGIS_ENFORCE_DEFAULT=${options.enforceDefault}`,
     "-e", `AEGIS_ALLOW_DOMAINS=${options.allowDomains.join(",")}`,
     "-e", `AEGIS_BLOCK_DOMAINS=${options.blockDomains.join(",")}`,
@@ -177,6 +194,8 @@ export interface AdoptedSandbox {
   interactive: boolean;
   command: string[];
   running: boolean;
+  project?: { name: string; path: string; readOnly?: boolean };
+  agentUid?: number;
 }
 
 /**
@@ -185,20 +204,25 @@ export interface AdoptedSandbox {
  * terminals and lifecycle controls would be orphaned.
  */
 export async function listAegisSandboxes(): Promise<AdoptedSandbox[]> {
-  const output = await docker(["ps", "-a", "--filter", "label=aegis.sandbox", "--format", "{{.Names}}\t{{.State}}\t{{.Label \"aegis.name\"}}\t{{.Label \"aegis.mode\"}}\t{{.Label \"aegis.interactive\"}}\t{{.Label \"aegis.command\"}}"]);
+  const output = await docker(["ps", "-a", "--filter", "label=aegis.sandbox", "--format", "{{.Names}}\t{{.State}}\t{{.Label \"aegis.name\"}}\t{{.Label \"aegis.mode\"}}\t{{.Label \"aegis.interactive\"}}\t{{.Label \"aegis.command\"}}\t{{.Label \"aegis.project\"}}\t{{.Label \"aegis.projectPath\"}}\t{{.Label \"aegis.projectRo\"}}\t{{.Label \"aegis.agentUid\"}}"]);
   const adopted: AdoptedSandbox[] = [];
   for (const line of output.split("\n")) {
     if (!line.trim()) continue;
-    const [containerName, state, name, mode, interactive, command] = line.split("\t");
+    const [containerName, state, name, mode, interactive, command, project, projectPath, projectRo, agentUid] = line.split("\t");
     if (!containerName?.startsWith("aegis-sb-") || containerName.endsWith("-net")) continue;
-    adopted.push({
+    const sandbox: AdoptedSandbox = {
       id: containerName.replace(/^aegis-sb-/, ""),
       name: name || containerName,
       mode: mode === "enforce" ? "enforce" : "observe",
       interactive: interactive === "1",
       command: command ? command.split(" ").filter(Boolean) : [],
       running: state === "running",
-    });
+    };
+    if (projectPath) {
+      sandbox.project = { name: project || projectPath, path: projectPath, ...(projectRo === "1" ? { readOnly: true } : {}) };
+    }
+    if (agentUid && /^\d+$/.test(agentUid)) sandbox.agentUid = Number(agentUid);
+    adopted.push(sandbox);
   }
   return adopted;
 }

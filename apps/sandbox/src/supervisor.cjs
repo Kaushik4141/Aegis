@@ -32,8 +32,10 @@ const MAX_LINE = 4000;
 const argv = process.argv.slice(2);
 const dd = argv.indexOf("--");
 const command = dd >= 0 ? argv.slice(dd + 1) : [];
-const AGENT_UID = 1000;
-const AGENT_GID = 1000;
+// Agents run as this uid; the service sets it to the laptop user's uid so
+// files written to a mounted project folder are owned by the real user.
+const AGENT_UID = Number(process.env.AEGIS_AGENT_UID) || 1000;
+const AGENT_GID = Number(process.env.AEGIS_AGENT_GID) || AGENT_UID;
 
 const queue = [];
 let dropped = 0;
