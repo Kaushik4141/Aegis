@@ -50,9 +50,15 @@ function SandboxWindowNode({ data, selected }: NodeProps) {
         hasAlert ? "border-red-300 ring-2 ring-red-300" : selected ? "border-blue-300 ring-2 ring-blue-300" : "border-slate-200"
       }`}
     >
-      <div className="flex cursor-grab select-none items-center justify-between gap-2 border-b border-slate-100 bg-slate-50/70 px-3 py-2">
+      <div
+        className="flex cursor-grab select-none items-center justify-between gap-2 border-b border-slate-100 bg-slate-50/70 px-3 py-2"
+        title="Drag this bar to move the window"
+      >
         <div className="flex min-w-0 items-center gap-2">
-          <GripVertical size={12} className="shrink-0 text-slate-300" />
+          <span className="flex shrink-0 items-center gap-1 rounded bg-slate-200/80 px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wider text-slate-500">
+            <GripVertical size={10} />
+            move
+          </span>
           <span className="truncate text-[11px] font-bold text-slate-800">{sandbox.name}</span>
           {sandbox.project && (
             <StatusPill tone="blue">
