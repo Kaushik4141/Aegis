@@ -12816,3 +12816,96 @@ web:dev:  ✓ Compiled in 394ms (1221 modules)
 web:dev:  GET / 200 in 275ms
 web:dev:  ✓ Compiled in 542ms (1221 modules)
 web:dev:  GET / 200 in 62ms
+web:dev:  ⨯ Error: Could not find the module "/home/kaushi/Projects/DEVHOST-sandbox/node_modules/next/dist/next-devtools/userspace/app/segment-explorer-node.js#SegmentViewNode" in the React Client Manifest. This is probably a bug in the React Server Components bundler.
+web:dev:     at stringify (<anonymous>) {
+web:dev:   digest: '2971376767'
+web:dev: }
+web:dev:  ⨯ Error: Could not find the module "/home/kaushi/Projects/DEVHOST-sandbox/node_modules/next/dist/next-devtools/userspace/app/segment-explorer-node.js#SegmentViewNode" in the React Client Manifest. This is probably a bug in the React Server Components bundler.
+web:dev:     at stringify (<anonymous>)
+web:dev:     at stringify (<anonymous>)
+web:dev:     at stringify (<anonymous>) {
+web:dev:   digest: '3046127001'
+web:dev: }
+web:dev:  ⨯ Error: Could not find the module "/home/kaushi/Projects/DEVHOST-sandbox/node_modules/next/dist/next-devtools/userspace/app/segment-explorer-node.js#SegmentViewNode" in the React Client Manifest. This is probably a bug in the React Server Components bundler.
+web:dev:     at stringify (<anonymous>)
+web:dev:     at stringify (<anonymous>) {
+web:dev:   digest: '2690886202'
+web:dev: }
+web:dev:  ⨯ Error: Could not find the module "/home/kaushi/Projects/DEVHOST-sandbox/node_modules/next/dist/next-devtools/userspace/app/segment-explorer-node.js#SegmentViewNode" in the React Client Manifest. This is probably a bug in the React Server Components bundler.
+web:dev:     at stringify (<anonymous>)
+web:dev:     at stringify (<anonymous>) {
+web:dev:   digest: '2690886202'
+web:dev: }
+web:dev:  ⨯ Error: Could not find the module "/home/kaushi/Projects/DEVHOST-sandbox/node_modules/next/dist/next-devtools/userspace/app/segment-explorer-node.js#SegmentViewNode" in the React Client Manifest. This is probably a bug in the React Server Components bundler.
+web:dev:     at stringify (<anonymous>)
+web:dev:     at stringify (<anonymous>) {
+web:dev:   digest: '2690886202'
+web:dev: }
+web:dev:  ⨯ Error: Could not find the module "/home/kaushi/Projects/DEVHOST-sandbox/node_modules/next/dist/next-devtools/userspace/app/segment-explorer-node.js#SegmentViewNode" in the React Client Manifest. This is probably a bug in the React Server Components bundler.
+web:dev:     at stringify (<anonymous>)
+web:dev:     at stringify (<anonymous>) {
+web:dev:   digest: '2690886202'
+web:dev: }
+web:dev:  ⨯ Error: Could not find the module "/home/kaushi/Projects/DEVHOST-sandbox/node_modules/next/dist/next-devtools/userspace/app/segment-explorer-node.js#SegmentViewNode" in the React Client Manifest. This is probably a bug in the React Server Components bundler.
+web:dev:     at stringify (<anonymous>)
+web:dev:     at stringify (<anonymous>) {
+web:dev:   digest: '2690886202'
+web:dev: }
+web:dev:  ⨯ Error: Could not find the module "/home/kaushi/Projects/DEVHOST-sandbox/node_modules/next/dist/next-devtools/userspace/app/segment-explorer-node.js#SegmentViewNode" in the React Client Manifest. This is probably a bug in the React Server Components bundler.
+web:dev:     at stringify (<anonymous>) {
+web:dev:   digest: '2971376767'
+web:dev: }
+web:dev:  ⨯ Error: Could not find the module "/home/kaushi/Projects/DEVHOST-sandbox/node_modules/next/dist/next-devtools/userspace/app/segment-explorer-node.js#SegmentViewNode" in the React Client Manifest. This is probably a bug in the React Server Components bundler.
+web:dev:     at stringify (<anonymous>) {
+web:dev:   digest: '2971376767'
+web:dev: }
+web:dev:  ⨯ [TypeError: __webpack_modules__[moduleId] is not a function] {
+web:dev:   digest: '467020245'
+web:dev: }
+web:dev:  ⨯ Error: Could not find the module "/home/kaushi/Projects/DEVHOST-sandbox/node_modules/next/dist/next-devtools/userspace/app/segment-explorer-node.js#SegmentViewNode" in the React Client Manifest. This is probably a bug in the React Server Components bundler.
+web:dev:     at stringify (<anonymous>) {
+web:dev:   digest: '2971376767'
+web:dev: }
+web:dev: [TypeError: __webpack_modules__[moduleId] is not a function]
+web:dev:  ⨯ [TypeError: __webpack_modules__[moduleId] is not a function]
+web:dev:  ⨯ [TypeError: __webpack_modules__[moduleId] is not a function] {
+web:dev:   page: '/'
+web:dev: }
+web:dev:  ⚠ Fast Refresh had to perform a full reload. Read more: https://nextjs.org/docs/messages/fast-refresh-reload
+web:dev:  GET / 500 in 2417ms
+web:dev:  ✓ Compiled /_error in 284ms (1308 modules)
+web:dev:  ⨯ Error: Cannot find module './383.js'
+web:dev: Require stack:
+web:dev: - /home/kaushi/Projects/DEVHOST-sandbox/apps/web/.next/server/webpack-runtime.js
+web:dev: - /home/kaushi/Projects/DEVHOST-sandbox/apps/web/.next/server/pages/_document.js
+web:dev: - /home/kaushi/Projects/DEVHOST-sandbox/node_modules/next/dist/server/require.js
+web:dev: - /home/kaushi/Projects/DEVHOST-sandbox/node_modules/next/dist/server/load-components.js
+web:dev: - /home/kaushi/Projects/DEVHOST-sandbox/node_modules/next/dist/build/utils.js
+web:dev: - /home/kaushi/Projects/DEVHOST-sandbox/node_modules/next/dist/build/swc/options.js
+web:dev: - /home/kaushi/Projects/DEVHOST-sandbox/node_modules/next/dist/build/swc/index.js
+web:dev: - /home/kaushi/Projects/DEVHOST-sandbox/node_modules/next/dist/build/analysis/parse-module.js
+web:dev: - /home/kaushi/Projects/DEVHOST-sandbox/node_modules/next/dist/build/analysis/get-page-static-info.js
+web:dev: - /home/kaushi/Projects/DEVHOST-sandbox/node_modules/next/dist/server/lib/router-utils/setup-dev-bundler.js
+web:dev: - /home/kaushi/Projects/DEVHOST-sandbox/node_modules/next/dist/server/lib/router-server.js
+web:dev: - /home/kaushi/Projects/DEVHOST-sandbox/node_modules/next/dist/server/lib/start-server.js
+web:dev:     at <unknown> (.next/server/pages/_document.js:1:321)
+web:dev:     at Object.<anonymous> (.next/server/pages/_document.js:1:365) {
+web:dev:   code: 'MODULE_NOT_FOUND',
+web:dev:   requireStack: [Array]
+web:dev: }
+web:dev:  GET / 200 in 565ms
+web:dev:  GET / 200 in 62ms
+web:dev:  GET / 200 in 106ms
+web:dev:  GET / 200 in 120ms
+web:dev:  GET / 200 in 84ms
+web:dev:  GET / 200 in 74ms
+web:dev:  GET / 200 in 92ms
+web:dev:  GET / 200 in 82ms
+web:dev:  GET / 200 in 88ms
+web:dev:  GET / 200 in 84ms
+web:dev:  GET / 200 in 82ms
+
+ Tasks:    1 successful, 1 total
+Cached:    0 cached, 1 total
+  Time:    30m43.35s 
+

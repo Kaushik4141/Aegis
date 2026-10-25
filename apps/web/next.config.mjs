@@ -1,6 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: false,
+  // Production builds (`next build`) write to their own distDir so they can
+  // never clobber the artifacts a running `next dev` server is serving.
+  distDir: process.env.NEXT_DIST_DIR || ".next",
   async rewrites() {
     const gatewayUrl = process.env.GATEWAY_URL || process.env.NEXT_PUBLIC_GATEWAY_URL || "http://127.0.0.1:8787";
     const sandboxUrl = process.env.SANDBOX_URL || "http://127.0.0.1:8788";

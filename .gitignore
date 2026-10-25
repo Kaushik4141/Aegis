@@ -64,3 +64,4 @@ lerna-debug.log*
 ehthumbs.db
 Thumbs.db
 apps/sandbox/data/
+.next-prod/
