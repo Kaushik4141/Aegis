@@ -14,6 +14,8 @@ const NAV: Array<{ id: View; label: string; icon: React.ReactNode }> = [
   { id: "approvals", label: "Approvals", icon: <Clock size={16} /> },
 ];
 
+// --- Main Application Component ---
+
 export default function Home() {
   const [view, setView] = useState<View>("agents");
   const [toast, setToast] = useState<string | null>(null);
@@ -73,6 +75,8 @@ export default function Home() {
             ))}
           </nav>
         </div>
+
+        {/* Header Right Metadata & Actions */}
         <div className="flex items-center gap-3">
           <div className="grid h-8 w-8 place-items-center rounded-full bg-gradient-to-br from-violet-500 to-blue-500 text-[10px] font-bold text-white">AG</div>
           <button
@@ -114,12 +118,19 @@ export default function Home() {
         </section>
       </div>
 
+      {/* Toast Notification */}
       {toast && (
-        <div className="toast">
-          <Check size={13} className="text-emerald-400" />
-          {toast}
+        <div className="fixed bottom-4 right-4 z-50 bg-slate-900 text-white text-xs px-3.5 py-2.5 rounded-md shadow-lg flex items-center gap-2 animate-in fade-in slide-in-from-bottom-2">
+          {toast.type === "success" ? (
+            <CheckCircle2 size={14} className="text-emerald-400" />
+          ) : toast.type === "error" ? (
+            <AlertCircle size={14} className="text-rose-400" />
+          ) : (
+            <Shield size={14} className="text-blue-400" />
+          )}
+          <span>{toast.message}</span>
         </div>
       )}
-    </main>
+    </div>
   );
 }
