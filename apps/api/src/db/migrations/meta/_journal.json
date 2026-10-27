@@ -8,6 +8,13 @@
       "when": 1792621618612,
       "tag": "0000_free_shen",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1792868875376,
+      "tag": "0001_clumsy_wraith",
+      "breakpoints": true
     }
   ]
 }

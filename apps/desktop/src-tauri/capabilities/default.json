@@ -1,0 +1,10 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Default capability for the Aegis window: core access plus the native folder picker used by 'Open folder as project'. The dashboard is served over http from the local dev stack, so dialog access must be granted for that origin explicitly.",
+  "windows": ["main"],
+  "remote": {
+    "urls": ["http://localhost:3000", "http://127.0.0.1:3000"]
+  },
+  "permissions": ["core:default", "dialog:default"]
+}

@@ -1,0 +1,25 @@
+npm notice run sentinelgate@0.1.0 dev:web
+npm notice run turbo run dev --filter=web
+
+   • turbo 2.11.10
+   • Packages in scope: web
+   • Running dev in 1 package
+   • Remote caching disabled, using shared worktree cache
+
+web:dev: cache bypass, force executing 66f753d14b799f88
+web:dev: npm notice run web@0.1.0 dev
+web:dev: npm notice run next dev -p 3000
+web:dev:    ▲ Next.js 15.5.28
+web:dev:    - Local:        http://localhost:3000
+web:dev:    - Network:      http://192.168.31.133:3000
+web:dev: 
+web:dev:  ✓ Starting...
+web:dev:  ✓ Ready in 1846ms
+web:dev:  ○ Compiling / ...
+web:dev:  ✓ Compiled / in 1417ms (976 modules)
+web:dev:  GET / 200 in 1951ms
+web:dev:  ✓ Compiled in 241ms (441 modules)
+web:dev:  GET / 200 in 50ms
+web:dev:  ✓ Compiled in 396ms (976 modules)
+web:dev:  GET / 200 in 119ms
+web:dev:  GET / 200 in 114ms

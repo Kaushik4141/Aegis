@@ -267,6 +267,148 @@ ANTHROPIC_API_KEY=... AGENT_PROVIDER=anthropic npm run agent
 
 The prompt is `Ask Autonomous Enterprise Agent >`. The model only receives SentinelGate tools; it never gets direct database, S3, Git, or Datadog access.
 
+## Run any agent inside an Aegis sandbox
+
+MCP gating only covers traffic that flows through the gateway. The sandbox
+(`apps/sandbox`, port `8788`) closes that gap for everything else — in two
+styles:
+
+**Interactive workspaces (the daily-driver experience).** The dashboard's
+**Sandboxes** view is an October-style canvas: launch a Shell, Claude Code,
+or Codex from the toolbar and each agent opens as its own draggable window
+with a live terminal — CLI agents auto-start inside their window. Windows
+persist across stop/restart (the workspace and your agent logins are kept)
+and across dashboard reloads (canvas positions are saved); delete removes a
+workspace for good. Every DNS lookup, outbound connection (with owning
+process), process, and file write lands in the inspector timeline, and
+direct access to registered business systems turns a window red with a
+shadow-access alert in real time.
+
+**Open folder as project (your laptop, sandboxed).** Instead of a fresh
+volume, mount one of your real folders into a monitored workspace: agent
+edits are real files owned by you (the agent runs as your uid), every write
+stays on the timeline, and the network remains fully sandboxed. Projects can
+be opened read-only, and you can add more terminals/agents to the same
+project from the inspector. The desktop app's **Browse…** button uses a
+native folder picker (tauri-plugin-dialog); in the browser, type the path.
+Project mounts require a local Docker daemon — remote daemons keep the
+isolated-volume workspaces.
+
+**Make it feel like home.** With the home profile enabled (default), a
+workspace also mounts curated slices of your laptop: your `.bashrc` /
+`.profile` (so the terminal behaves like yours), `.gitconfig` (commits carry
+your identity), agent configs (`~/.claude`, `~/.codex`, `~/.gemini`,
+`~/.antigravity` — log in once, every workspace shares the session and your
+skills), and global package dirs (`~/.local`, `~/.npm-global`, read-only and
+first on PATH). If an ssh-agent is running, its socket is forwarded so
+`git push` works without private keys ever entering the sandbox. The image
+preinstalls `claude`, `codex`, `tsx`, and the Google Antigravity CLI
+(`agy`), and the canvas has an **Antigravity** launch template.
+
+**One-shot runs (scripted agents and demos).**
+
+```bash
+npm run sandbox -- run --workspace ./scripts \
+  --env GEMINI_API_KEY=... \
+  --stdin "list unpaid invoices" \
+  -- tsx real-agent.ts
+```
+
+Fire the repo's own terminal agent (a real LLM agent) inside a sandbox:
+
+```bash
+npm run sandbox -- run --workspace ./scripts \
+  --env GEMINI_API_KEY=... \
+  --stdin "list unpaid invoices" \
+  -- tsx real-agent.ts
+```
+
+`--workspace` copies a host directory into the sandbox before start (agents
+never touch the host filesystem), `--stdin` feeds the agent's REPL — append an
+`exit` line for a one-shot run, omit it to keep the agent alive until you stop
+the sandbox from the dashboard. `SENTINEL_GATEWAY_URL` is injected
+automatically so the agent's gateway tools route through Aegis. To simulate a
+compromised agent that ignores the gateway and uses raw credentials, point it
+at a watched host:
+
+```bash
+# observe: the attempt is recorded and alerted but succeeds
+npm run sandbox -- run -- bash -lc 'exec 3<>/dev/tcp/db.acme.internal/5432 && echo connected'
+# enforce: the connection is refused at the network layer and alerted
+npm run sandbox -- run --mode enforce -- bash -lc 'exec 3<>/dev/tcp/db.acme.internal/5432 && echo connected'
+```
+
+Watch it live in the dashboard's **Sandboxes** view (live output, full
+timeline, shadow-access alerts).
+
+Modes:
+
+- **observe** — record everything, alert on shadow access. Any DNS lookup or
+  outbound connection to a registered connection's host (or an extra
+  `SENTINEL_SHADOW_WATCHLIST=host1,host2` list) raises a
+  `sandbox.shadow_access` alert event plus an audit entry, in real time.
+- **enforce** — additionally installs iptables rules (IPv4 and IPv6) so agent
+  processes (uid 1000) can only reach the Aegis gateway and allow-listed
+  endpoints (LLM providers, package registries; extend with
+  `AEGIS_SANDBOX_ALLOW_DOMAINS`). Direct access to registered business
+  systems is refused at the network layer and logged — raw credentials become
+  unusable even if an agent holds them. `--default allow` flips the posture to
+  "block only registered hosts".
+
+Agents never run as root, never share the host filesystem, and get their
+workspace from a per-sandbox volume. On stop, a `docker diff` report of every
+file the agent touched is stored with the sandbox record.
+
+Gateway API: `POST/GET /api/v1/sandboxes`, `GET /api/v1/sandboxes/:id/events`,
+and `POST /api/v1/sandboxes/:id/events` (service-side ingest). The dashboard
+gains a **Sandboxes** view with live output, the full observed timeline, and
+shadow-access alerts.
+
+## The desktop app
+
+`npm run desktop` launches the Aegis Control Plane as a native window
+(Tauri 2 — requires Rust and webkit2gtk on Linux). The app starts every
+service that is not already running (gateway :8787, sandbox service :8788,
+dashboard :3000), shows a splash with live status (including whether Docker
+is available), then loads the control plane. Closing the window tears down
+the services it started; service logs land in `data/desktop-logs/`.
+Services that were already running are reused, not duplicated.
+
+## Cloud deployment
+
+The same stack runs on any cloud VM with Docker — sandboxes are real Linux
+containers there, so the full instrumentation (netwatch, DNS logging,
+shadow-access alerts, enforce-mode iptables) works identically. See
+`deploy/cloud/README.md` for the one-command setup (`setup.sh` +
+`docker compose up`). Workspaces are daemon-side named volumes and the
+instrumentation is baked into the image, so the sandbox service is
+daemon-agnostic: point `DOCKER_HOST` at any reachable Docker daemon
+(`tcp://…` directly or over an SSH tunnel) and sandboxes are created there
+while events, alerts, and terminals keep flowing through your gateway.
+
+```
+┌─ Aegis Desktop ────────────────────────────────────────────┐
+│  Splash → dashboard → your agents, inside monitored boxes  │
+└────────────────────────────────────────────────────────────┘
+```
+
+## Agent login (OAuth) from inside sandboxes
+
+CLIs like `claude`, `codex`, and `agy` authenticate by starting a callback
+server on `127.0.0.1:<random>` inside the sandbox and opening the provider
+in your browser — which normally can't reach back in. Aegis closes the loop
+automatically: netwatch detects every new loopback listener, relays it to
+the sandbox's bridge IP (DNAT with `route_localnet`, set via `--sysctl` at
+container create), and the sandbox service forwards
+`laptop:127.0.0.1:<port> -> container:<port>`. Click the auth URL in a
+terminal (links are clickable; Ctrl/Cmd+Shift+C copies the selection) — it
+opens on your laptop and the browser round-trip completes back into the
+sandbox. Forwarders bind to laptop localhost only and close with the
+sandbox. Fixed-port CLIs (codex uses 1455) collide across simultaneous
+logins, so forwarders live in a service-wide registry where the latest
+listener wins the port, and a forwarder is released the moment its
+in-container listener dies.
+
 ## Optional production integrations
 
 Set these environment variables when deploying:

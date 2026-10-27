@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
+import "@xyflow/react/dist/style.css";
 
 const inter = Inter({
   subsets: ["latin"],
